@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profiles",
+      "description": "User profile settings and stats",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "totalScans": { "type": "number" },
+        "healthyScansCount": { "type": "number" },
+        "unhealthyScansCount": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid"]
+    },
+    "scans": {
+      "title": "Product Scans",
+      "description": "Nutritional scan history for food products",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "productName": { "type": "string" },
+        "brand": { "type": "string" },
+        "healthScore": { "type": "number" },
+        "grade": { "type": "string" },
+        "isFavorite": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "productName", "healthScore"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "#/entities/users",
+      "description": "User profile documents keyed by Auth UID"
+    },
+    "/scans/{scanId}": {
+      "schema": "#/entities/scans",
+      "description": "Nutritional scan documents"
+    }
+  }
+}

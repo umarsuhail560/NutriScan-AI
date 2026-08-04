@@ -1,0 +1,133 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { Html5QrcodeScanner } from 'html5-qrcode';
+import { X, Camera, Barcode, AlertCircle, ArrowRight } from 'lucide-react';
+
+interface BarcodeScannerModalProps {
+  onScanBarcode: (barcode: string) => void;
+  onClose: () => void;
+  onFallbackToPhotos: () => void;
+}
+
+export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
+  onScanBarcode,
+  onClose,
+  onFallbackToPhotos,
+}) => {
+  const [manualCode, setManualCode] = useState<string>('');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+
+  useEffect(() => {
+    // Initialize html5-qrcode scanner
+    const scanner = new Html5QrcodeScanner(
+      'barcode-reader',
+      {
+        fps: 10,
+        qrbox: { width: 250, height: 160 },
+        aspectRatio: 1.5,
+      },
+      /* verbose= */ false
+    );
+    scannerRef.current = scanner;
+
+    scanner.render(
+      (decodedText) => {
+        if (decodedText) {
+          scanner.clear().catch(() => {});
+          onScanBarcode(decodedText);
+        }
+      },
+      (error) => {
+        // Ignore minor frame errors
+      }
+    );
+
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch(() => {});
+      }
+    };
+  }, [onScanBarcode]);
+
+  const handleManualSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualCode.trim()) {
+      setErrorMsg('Please enter a valid barcode number');
+      return;
+    }
+    onScanBarcode(manualCode.trim());
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl text-slate-100 flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+              <Barcode className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold">Scan Product Barcode</h2>
+              <p className="text-xs text-slate-400">Point camera at EAN/UPC code</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Camera Container */}
+        <div className="p-4 overflow-y-auto space-y-4">
+          <div className="relative rounded-2xl overflow-hidden bg-slate-950 border border-slate-800">
+            <div id="barcode-reader" className="w-full text-slate-200" />
+          </div>
+
+          {/* Manual Enter Box */}
+          <div className="bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
+            <label className="text-xs font-semibold text-slate-300 block mb-1">
+              Or type barcode manually:
+            </label>
+            <form onSubmit={handleManualSubmit} className="flex gap-2">
+              <input
+                type="text"
+                placeholder="e.g. 737628064502"
+                value={manualCode}
+                onChange={(e) => {
+                  setManualCode(e.target.value);
+                  setErrorMsg(null);
+                }}
+                className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs flex items-center gap-1 transition-all"
+              >
+                Scan <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </form>
+            {errorMsg && <p className="text-xs text-rose-400 mt-1">{errorMsg}</p>}
+          </div>
+
+          {/* Fallback option */}
+          <div className="p-3 bg-slate-800/30 rounded-2xl border border-slate-800 text-center space-y-2">
+            <div className="flex items-center justify-center gap-1.5 text-xs text-slate-400">
+              <AlertCircle className="w-4 h-4 text-amber-400" />
+              <span>Barcode hard to read or not found?</span>
+            </div>
+            <button
+              onClick={onFallbackToPhotos}
+              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-all"
+            >
+              <Camera className="w-4 h-4" />
+              Upload Packaging Photo Instead
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
