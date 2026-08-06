@@ -3,15 +3,13 @@ dotenv.config();
 
 import express from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
+
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = process.cwd();
 
 const app = express();
-const PORT = 3000;
+const PORT: number = parseInt(process.env.PORT || "3000", 10);
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
