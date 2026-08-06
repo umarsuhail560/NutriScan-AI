@@ -55,21 +55,61 @@ export const ScannerPage: React.FC<ScannerPageProps> = ({
   }, [mode, selectedImage]);
 
   const startCamera = async () => {
-    setCameraError(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setCameraActive(true);
-      }
-    } catch (err: any) {
-      console.warn('Camera access error:', err);
-      setCameraError('Camera access unavailable. You can upload an image file instead.');
-      setCameraActive(false);
+  setCameraError(null);
+
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error("Camera API not supported");
     }
-  };
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+      audio: false,
+    });
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+
+      await videoRef.current.play();
+
+      setCameraActive(true);
+    }
+
+  } catch (err: any) {
+
+    console.error(
+      "Camera Error:",
+      err.name,
+      err.message
+    );
+
+    setCameraActive(false);
+
+    if (err.name === "NotAllowedError") {
+      setCameraError(
+        "Camera permission denied. Allow camera access from browser settings."
+      );
+    } 
+    else if (err.name === "NotFoundError") {
+      setCameraError(
+        "No camera detected on this device."
+      );
+    } 
+    else if (err.name === "NotReadableError") {
+      setCameraError(
+        "Camera is busy. Close other apps using camera."
+      );
+    } 
+    else {
+      setCameraError(
+        "Camera unavailable. Please use upload mode."
+      );
+    }
+  }
+};
 
   const stopCamera = () => {
     if (videoRef.current && videoRef.current.srcObject) {
@@ -160,7 +200,14 @@ export const ScannerPage: React.FC<ScannerPageProps> = ({
         isFavorite: false,
       };
 
-      const saved = await saveScanToFirestore(scanPayload, userProfile?.uid || 'guest');
+      if (!userProfile?.uid) {
+  throw new Error("Please login before saving scan history");
+}
+
+const saved = await saveScanToFirestore(
+  scanPayload,
+  userProfile.uid
+);
       await updateUserStats(isHealthy);
       onScanComplete(saved);
       navigate('/result');

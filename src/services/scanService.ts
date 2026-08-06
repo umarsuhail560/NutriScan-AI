@@ -66,8 +66,10 @@ export async function saveScanToFirestore(scan: Omit<FoodScan, 'id'>, userId: st
 }
 
 export async function fetchUserScans(userId: string): Promise<FoodScan[]> {
+
+  // Do not show guest scans after login
   if (!userId || userId === 'guest') {
-    return getLocalScans();
+    return [];
   }
 
   try {
@@ -163,4 +165,30 @@ export async function searchProductsQuery(queryStr: string) {
 
   const data = await response.json();
   return data.results || [];
+}
+export async function migrateGuestScansToUser(userId: string) {
+  const guestScans = getLocalScans();
+
+  if (guestScans.length === 0) return;
+
+  try {
+    for (const scan of guestScans) {
+      const { id, ...scanData } = scan;
+
+      await addDoc(collection(db, 'scans'), {
+        ...scanData,
+        userId,
+        migratedFromGuest: true,
+        createdAt: scan.createdAt || new Date().toISOString(),
+      });
+    }
+
+    // Remove guest history after successful migration
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+
+    console.log("Guest scans migrated successfully");
+
+  } catch (error) {
+    console.error("Migration failed:", error);
+  }
 }

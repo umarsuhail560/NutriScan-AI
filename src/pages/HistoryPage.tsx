@@ -39,16 +39,26 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onSelectScan }) => {
   }, [userProfile]);
 
   const loadScans = async () => {
-    setLoading(true);
-    try {
-      const data = await fetchUserScans(userProfile?.uid || 'guest');
-      setScans(data);
-    } catch (err) {
-      console.warn('Error fetching scans:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+
+  if (!userProfile?.uid) {
+    setScans([]);
+    setLoading(false);
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    const data = await fetchUserScans(userProfile.uid);
+    setScans(data);
+
+  } catch(err){
+    console.warn("Error fetching scans:",err);
+
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleDelete = async (e: React.MouseEvent, scanId?: string) => {
     e.stopPropagation();

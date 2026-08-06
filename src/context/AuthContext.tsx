@@ -1,3 +1,4 @@
+import { migrateGuestScansToUser } from '../services/scanService'; 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   User as FirebaseUser,
@@ -39,7 +40,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setFirebaseUser(currentUser);
       if (currentUser) {
-        setIsGuest(false);
+
+  await migrateGuestScansToUser(currentUser.uid);
+
+  setIsGuest(false);
         // Fetch or create Firestore user doc
         try {
           const userRef = doc(db, 'users', currentUser.uid);
@@ -83,16 +87,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signInWithGoogle = async () => {
-    setLoading(true);
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (err: any) {
-      console.error('Google Sign In Error:', err);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  };
+  setLoading(true);
+
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+
+    console.log("Google login successful:", result.user.email);
+
+    await migrateGuestScansToUser(result.user.uid);
+
+  } catch (err: any) {
+    console.error('Google Sign In Error:', err);
+    throw err;
+
+  } finally {
+    setLoading(false);
+  }
+};
 
   const loginWithEmail = async (email: string, pass: string) => {
     setLoading(true);
