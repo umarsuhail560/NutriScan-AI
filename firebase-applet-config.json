@@ -1,11 +1,11 @@
 {
-  "projectId": "nutriscan-ai-a86e3",
-  "appId": "1:918083917873:web:2fa85494518393220e1d10",
-  "apiKey": "AIzaSyDYN0_p4uUaxN8Y83VIFdl54hNKWMEGxso",
-  "authDomain": "nutriscan-ai-a86e3.firebaseapp.com",
+  "projectId": "nutriscan-ai-fbf9c",
+  "appId": "1:1005796912952:web:24899b748b6f1389581bcd",
+  "apiKey": "AIzaSyB03yFq15DZgFTIipevI5T5Qh6x_JOQkWo",
+  "authDomain": "nutriscan-ai-fbf9c.firebaseapp.com",
   "firestoreDatabaseId": "",
-  "storageBucket": "nutriscan-ai-a86e3.firebasestorage.app",
-  "messagingSenderId": "918083917873",
+  "storageBucket": "nutriscan-ai-fbf9c.firebasestorage.app",
+  "messagingSenderId": "1005796912952",
   "measurementId": "",
   "oAuthClientId": "",
   "recaptchaSiteKey": ""

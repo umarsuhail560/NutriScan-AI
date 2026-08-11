@@ -3,7 +3,7 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "YOUR_NEW_API_KEY",
+  apiKey: "AIzaSyB03yFq15DZgFTIipevI5T5Qh6x_JOQkWo",
   authDomain: "nutriscan-ai-fbf9c.firebaseapp.com",
   projectId: "nutriscan-ai-fbf9c",
   storageBucket: "nutriscan-ai-fbf9c.firebasestorage.app",
