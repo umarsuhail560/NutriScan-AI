@@ -1,6 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
-import { X, Camera, Barcode, AlertCircle, ArrowRight } from 'lucide-react';
+import {
+  Html5Qrcode,
+  Html5QrcodeSupportedFormats,
+} from 'html5-qrcode';
+import {
+  X,
+  Camera,
+  Barcode,
+  AlertCircle,
+  ArrowRight,
+  RefreshCw,
+} from 'lucide-react';
 
 interface BarcodeScannerModalProps {
   onScanBarcode: (barcode: string) => void;
@@ -13,87 +23,293 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   onClose,
   onFallbackToPhotos,
 }) => {
-  const [manualCode, setManualCode] = useState<string>('');
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const mountedRef = useRef(true);
+
+  const [manualCode, setManualCode] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>(
+    'environment'
+  );
+  const [switchingCamera, setSwitchingCamera] = useState(false);
 
-  useEffect(() => {
-    // Initialize html5-qrcode scanner
-    const scanner = new Html5QrcodeScanner(
-      'barcode-reader',
-      {
+  const stopScanner = async () => {
+    const scanner = scannerRef.current;
+
+    if (!scanner) return;
+
+    try {
+      const state = scanner.getState();
+
+      // 2 = SCANNING
+      if (state === 2) {
+        await scanner.stop();
+      }
+    } catch (error) {
+      console.warn('Scanner stop error:', error);
+    }
+
+    try {
+      scanner.clear();
+    } catch (error) {
+      console.warn('Scanner clear error:', error);
+    }
+
+    scannerRef.current = null;
+
+    if (mountedRef.current) {
+      setCameraActive(false);
+    }
+  };
+
+  const startScanner = async (
+    facing: 'environment' | 'user' = cameraFacing
+  ) => {
+    setErrorMsg(null);
+
+    try {
+      // Stop previous scanner first
+      await stopScanner();
+
+      if (!mountedRef.current) return;
+
+      const scanner = new Html5Qrcode('barcode-reader', {
+        verbose: false,
+      });
+
+      scannerRef.current = scanner;
+
+      const config = {
         fps: 10,
-        qrbox: { width: 250, height: 160 },
-        aspectRatio: 1.5,
-      },
-      /* verbose= */ false
-    );
-    scannerRef.current = scanner;
+        qrbox: {
+          width: 280,
+          height: 140,
+        },
+        aspectRatio: 1.7777778,
 
-    scanner.render(
-      (decodedText) => {
-        if (decodedText) {
-          scanner.clear().catch(() => {});
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODE_93,
+        ],
+      };
+
+      await scanner.start(
+        {
+          facingMode: facing,
+        },
+        config,
+        (decodedText) => {
+          if (!decodedText || !mountedRef.current) return;
+
+          // Stop camera after successful scan
+          stopScanner();
+
           onScanBarcode(decodedText);
+        },
+        () => {
+          // Ignore normal frame-by-frame scan failures
         }
-      },
-      (error) => {
-        // Ignore minor frame errors
-      }
-    );
+      );
 
-    return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(() => {});
+      if (mountedRef.current) {
+        setCameraActive(true);
       }
-    };
-  }, [onScanBarcode]);
+    } catch (error: any) {
+      console.error('Barcode camera error:', error);
+
+      if (mountedRef.current) {
+        setCameraActive(false);
+
+        setErrorMsg(
+          facing === 'environment'
+            ? 'Rear camera could not be opened. Please allow camera permission or switch to the front camera.'
+            : 'Front camera could not be opened. Please allow camera permission or switch to the rear camera.'
+        );
+      }
+    }
+  };
+
+  const switchCamera = async () => {
+    if (switchingCamera) return;
+
+    setSwitchingCamera(true);
+    setErrorMsg(null);
+
+    const newFacing =
+      cameraFacing === 'environment' ? 'user' : 'environment';
+
+    setCameraFacing(newFacing);
+
+    try {
+      await startScanner(newFacing);
+    } finally {
+      if (mountedRef.current) {
+        setSwitchingCamera(false);
+      }
+    }
+  };
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualCode.trim()) {
-      setErrorMsg('Please enter a valid barcode number');
+
+    const code = manualCode.trim();
+
+    if (!code) {
+      setErrorMsg('Please enter a valid barcode number.');
       return;
     }
-    onScanBarcode(manualCode.trim());
+
+    onScanBarcode(code);
   };
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    // Start rear camera automatically
+    startScanner('environment');
+
+    return () => {
+      mountedRef.current = false;
+
+      const scanner = scannerRef.current;
+
+      if (scanner) {
+        try {
+          if (scanner.getState() === 2) {
+            scanner.stop().catch(() => {});
+          }
+        } catch {
+          // Ignore cleanup errors
+        }
+
+        try {
+          scanner.clear();
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+
+      scannerRef.current = null;
+    };
+  }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl text-slate-100 flex flex-col max-h-[90vh]">
-        {/* Header */}
+
+        {/* HEADER */}
         <div className="p-4 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
               <Barcode className="w-5 h-5" />
             </div>
+
             <div>
-              <h2 className="text-base font-bold">Scan Product Barcode</h2>
-              <p className="text-xs text-slate-400">Point camera at EAN/UPC code</p>
+              <h2 className="text-base font-bold">
+                Scan Product Barcode
+              </h2>
+
+              <p className="text-xs text-slate-400">
+                Point camera at EAN / UPC code
+              </p>
             </div>
           </div>
+
           <button
-            onClick={onClose}
+            onClick={async () => {
+              await stopScanner();
+              onClose();
+            }}
             className="p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Camera Container */}
+        {/* CONTENT */}
         <div className="p-4 overflow-y-auto space-y-4">
-          <div className="relative rounded-2xl overflow-hidden bg-slate-950 border border-slate-800">
-            <div id="barcode-reader" className="w-full text-slate-200" />
+
+          {/* CAMERA */}
+          <div className="relative rounded-2xl overflow-hidden bg-black border border-slate-800">
+
+            <div
+              id="barcode-reader"
+              className="w-full min-h-[280px] text-slate-200"
+            />
+
+            {/* Camera switch */}
+            {cameraActive && (
+              <button
+                onClick={switchCamera}
+                disabled={switchingCamera}
+                className="absolute top-3 right-3 z-10 p-3 rounded-full bg-slate-950/80 border border-slate-700 text-white shadow-lg hover:bg-slate-800 disabled:opacity-50"
+                title="Switch camera"
+                aria-label="Switch between front and rear camera"
+              >
+                <RefreshCw
+                  className={`w-5 h-5 ${
+                    switchingCamera ? 'animate-spin' : ''
+                  }`}
+                />
+              </button>
+            )}
+
+            {/* Camera label */}
+            {cameraActive && (
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10">
+                <div className="px-3 py-1.5 rounded-full bg-slate-950/80 backdrop-blur-sm border border-slate-700 text-xs font-semibold text-emerald-300">
+                  {cameraFacing === 'environment'
+                    ? 'Rear Camera'
+                    : 'Front Camera'}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Manual Enter Box */}
+          {/* CAMERA ERROR */}
+          {errorMsg && (
+            <div className="p-3 bg-rose-950/40 border border-rose-500/40 rounded-xl">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 mt-0.5 flex-shrink-0" />
+
+                <div className="flex-1">
+                  <p className="text-xs text-rose-300">
+                    {errorMsg}
+                  </p>
+
+                  {!cameraActive && (
+                    <button
+                      onClick={() => startScanner(cameraFacing)}
+                      className="mt-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs font-semibold text-white"
+                    >
+                      Retry Camera
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MANUAL BARCODE */}
           <div className="bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50">
+
             <label className="text-xs font-semibold text-slate-300 block mb-1">
               Or type barcode manually:
             </label>
-            <form onSubmit={handleManualSubmit} className="flex gap-2">
+
+            <form
+              onSubmit={handleManualSubmit}
+              className="flex gap-2"
+            >
               <input
                 type="text"
+                inputMode="numeric"
                 placeholder="e.g. 737628064502"
                 value={manualCode}
                 onChange={(e) => {
@@ -102,30 +318,40 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 }}
                 className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
               />
+
               <button
                 type="submit"
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl text-xs flex items-center gap-1 transition-all"
               >
-                Scan <ArrowRight className="w-3.5 h-3.5" />
+                Scan
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </form>
-            {errorMsg && <p className="text-xs text-rose-400 mt-1">{errorMsg}</p>}
           </div>
 
-          {/* Fallback option */}
+          {/* FALLBACK */}
           <div className="p-3 bg-slate-800/30 rounded-2xl border border-slate-800 text-center space-y-2">
+
             <div className="flex items-center justify-center gap-1.5 text-xs text-slate-400">
               <AlertCircle className="w-4 h-4 text-amber-400" />
-              <span>Barcode hard to read or not found?</span>
+
+              <span>
+                Barcode hard to read or not found?
+              </span>
             </div>
+
             <button
-              onClick={onFallbackToPhotos}
+              onClick={async () => {
+                await stopScanner();
+                onFallbackToPhotos();
+              }}
               className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-all"
             >
               <Camera className="w-4 h-4" />
               Upload Packaging Photo Instead
             </button>
           </div>
+
         </div>
       </div>
     </div>
