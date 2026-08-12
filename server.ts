@@ -67,7 +67,7 @@ const FOOD_ANALYSIS_SYSTEM_PROMPT = `
 You are NutriScan AI, an expert food nutrition and food-label analysis assistant.
 
 Your task is to analyze food products using ONLY the information actually visible
-or provided in the product image / barcode metadata.
+or provided in the product image / verified barcode database metadata.
 
 IMPORTANT ACCURACY RULES:
 
@@ -80,6 +80,10 @@ IMPORTANT ACCURACY RULES:
 6. If important nutrition information is unavailable, reduce confidence and explain
    this in the summary.
 7. Keep the language simple and understandable.
+8. Barcode numbers alone must NEVER be treated as proof of product identity.
+9. When barcode database information is supplied, use that information as the
+   verified source for product identity and nutrition values.
+10. Do not invent information that is not present in the supplied data or image.
 
 Return ONLY valid JSON matching this structure:
 
@@ -227,7 +231,13 @@ Look for:
 - Fibre
 - Carbohydrates
 
+IMPORTANT:
+
+Use ONLY information visible in the image.
+
 If the image does not contain enough information, DO NOT GUESS.
+
+Return "Data unavailable" for information that cannot be verified.
 
 ${userPrompt ? `Additional user information: ${userPrompt}` : ''}
 `;
@@ -267,7 +277,10 @@ ${userPrompt ? `Additional user information: ${userPrompt}` : ''}
     try {
       data = JSON.parse(cleanJsonString);
     } catch (parseError) {
-      console.error('Gemini JSON parsing failed:', cleanJsonString);
+      console.error(
+        'Gemini JSON parsing failed:',
+        cleanJsonString
+      );
 
       throw new Error(
         'AI returned invalid JSON. Please try scanning the product again.'
@@ -279,7 +292,10 @@ ${userPrompt ? `Additional user information: ${userPrompt}` : ''}
       data,
     });
   } catch (err: any) {
-    console.error('Error in /api/analyze-image:', err);
+    console.error(
+      'Error in /api/analyze-image:',
+      err
+    );
 
     return res.status(500).json({
       error:
@@ -288,6 +304,120 @@ ${userPrompt ? `Additional user information: ${userPrompt}` : ''}
     });
   }
 });
+
+/* =========================================================
+   OPEN FOOD FACTS HELPER
+========================================================= */
+
+async function lookupBarcodeInOpenFoodFacts(
+  barcode: string
+) {
+  console.log(
+    `[Barcode] Starting Open Food Facts lookup: ${barcode}`
+  );
+
+  /* -------------------------------------------------------
+     METHOD 1: DIRECT PRODUCT ENDPOINT
+  ------------------------------------------------------- */
+
+  const directUrl =
+    `https://world.openfoodfacts.org/api/v2/product/` +
+    `${encodeURIComponent(barcode)}.json`;
+
+  console.log(
+    `[Barcode] Direct lookup URL: ${directUrl}`
+  );
+
+  try {
+    const response = await fetch(directUrl);
+
+    console.log(
+      `[Barcode] Direct lookup HTTP status: ${response.status}`
+    );
+
+    if (response.ok) {
+      const data: any = await response.json();
+
+      console.log(
+        `[Barcode] Direct lookup database status: ${data?.status}`
+      );
+
+      if (
+        data &&
+        data.status === 1 &&
+        data.product
+      ) {
+        console.log(
+          `[Barcode] Product FOUND using direct lookup.`
+        );
+
+        return data;
+      }
+    }
+  } catch (error) {
+    console.error(
+      '[Barcode] Direct Open Food Facts lookup failed:',
+      error
+    );
+  }
+
+  /* -------------------------------------------------------
+     METHOD 2: SEARCH ENDPOINT USING BARCODE
+  ------------------------------------------------------- */
+
+  console.log(
+    `[Barcode] Direct lookup failed. Trying secondary search...`
+  );
+
+  const searchUrl =
+    `https://world.openfoodfacts.org/api/v2/search` +
+    `?code=${encodeURIComponent(barcode)}` +
+    `&page_size=1`;
+
+  console.log(
+    `[Barcode] Secondary lookup URL: ${searchUrl}`
+  );
+
+  try {
+    const response = await fetch(searchUrl);
+
+    console.log(
+      `[Barcode] Secondary lookup HTTP status: ${response.status}`
+    );
+
+    if (response.ok) {
+      const data: any = await response.json();
+
+      if (
+        data &&
+        Array.isArray(data.products) &&
+        data.products.length > 0
+      ) {
+        const product = data.products[0];
+
+        console.log(
+          `[Barcode] Product FOUND using secondary lookup.`
+        );
+
+        return {
+          status: 1,
+          product,
+        };
+      }
+    }
+  } catch (error) {
+    console.error(
+      '[Barcode] Secondary Open Food Facts lookup failed:',
+      error
+    );
+  }
+
+  console.log(
+    `[Barcode] Product NOT FOUND in Open Food Facts: ${barcode}`
+  );
+
+  return null;
+}
 
 /* =========================================================
    ANALYZE BARCODE
@@ -303,23 +433,34 @@ app.post('/api/analyze-barcode', async (req, res) => {
       });
     }
 
-    console.log(`Barcode lookup requested: ${barcode}`);
+    const cleanBarcode = String(barcode).trim();
+
+    if (!cleanBarcode) {
+      return res.status(400).json({
+        error: 'Barcode is required',
+      });
+    }
+
+    console.log(
+      `=================================================`
+    );
+
+    console.log(
+      `[Barcode] Lookup requested: ${cleanBarcode}`
+    );
+
+    console.log(
+      `=================================================`
+    );
 
     /* -----------------------------------------------------
        OPEN FOOD FACTS LOOKUP
     ----------------------------------------------------- */
 
-    const offUrl =
-      `https://world.openfoodfacts.org/api/v2/product/` +
-      `${encodeURIComponent(barcode)}.json`;
-
-    const offRes = await fetch(offUrl);
-
-    let offData: any = null;
-
-    if (offRes.ok) {
-      offData = await offRes.json();
-    }
+    const offData =
+      await lookupBarcodeInOpenFoodFacts(
+        cleanBarcode
+      );
 
     /* -----------------------------------------------------
        PRODUCT NOT FOUND
@@ -330,11 +471,21 @@ app.post('/api/analyze-barcode', async (req, res) => {
       offData.status !== 1 ||
       !offData.product
     ) {
+      console.log(
+        `[Barcode] No verified product data found for ${cleanBarcode}.`
+      );
+
       return res.json({
         found: false,
-        barcode,
+        barcode: cleanBarcode,
+
+        fallbackToImageAnalysis: true,
+
         message:
-          'Product not found in the barcode database. Please scan or upload clear front and back images of the product for AI analysis.',
+          'The barcode was scanned correctly, but this product is not currently available in our barcode database. Please upload clear front and back images of the product for AI analysis.',
+
+        reason:
+          'NO_BARCODE_DATABASE_MATCH',
       });
     }
 
@@ -343,6 +494,18 @@ app.post('/api/analyze-barcode', async (req, res) => {
     ----------------------------------------------------- */
 
     const p = offData.product;
+
+    console.log(
+      `[Barcode] Verified product received from database.`
+    );
+
+    console.log(
+      `[Barcode] Product name: ${
+        p.product_name ||
+        p.product_name_en ||
+        'Unknown Product'
+      }`
+    );
 
     const productName =
       p.product_name ||
@@ -360,6 +523,10 @@ app.post('/api/analyze-barcode', async (req, res) => {
 
     const nutriments =
       p.nutriments || {};
+
+    /* -----------------------------------------------------
+       SAFE VALUE HELPER
+    ----------------------------------------------------- */
 
     const getValue = (
       primary: any,
@@ -383,6 +550,10 @@ app.post('/api/analyze-barcode', async (req, res) => {
 
       return 'Data unavailable';
     };
+
+    /* -----------------------------------------------------
+       VERIFIED NUTRITION VALUES
+    ----------------------------------------------------- */
 
     const calories = getValue(
       nutriments['energy-kcal_100g'],
@@ -419,6 +590,10 @@ app.post('/api/analyze-barcode', async (req, res) => {
       nutriments.carbohydrates
     );
 
+    /* -----------------------------------------------------
+       OTHER DATABASE DATA
+    ----------------------------------------------------- */
+
     const imageUrl =
       p.image_url ||
       p.image_front_url ||
@@ -429,6 +604,10 @@ app.post('/api/analyze-barcode', async (req, res) => {
       p.serving_size ||
       '100g';
 
+    const nutriScore =
+      p.nutriscore_grade ||
+      'Data unavailable';
+
     /* -----------------------------------------------------
        GEMINI ENRICHMENT
     ----------------------------------------------------- */
@@ -436,10 +615,10 @@ app.post('/api/analyze-barcode', async (req, res) => {
     const ai = getGeminiAI();
 
     const promptText = `
-Analyze this food product using the barcode database information below.
+Analyze this food product using the VERIFIED barcode database information below.
 
 Barcode:
-${barcode}
+${cleanBarcode}
 
 Product name:
 ${productName}
@@ -477,18 +656,18 @@ Carbohydrates:
 ${carbohydrates}
 
 Nutri-Score from database:
-${p.nutriscore_grade || 'Data unavailable'}
+${nutriScore}
 
 IMPORTANT:
 
-Use the supplied information.
+The product identity and numerical values supplied above come from the
+barcode database.
 
-Do NOT invent missing nutrition or ingredient information.
+Do NOT change or invent those verified values.
 
-If an important value is missing, report:
-"Data unavailable"
+Do NOT invent information that is marked "Data unavailable".
 
-Provide:
+Use the supplied information to determine:
 
 - Health score
 - Grade
@@ -511,7 +690,17 @@ Provide:
 - Daily advice
 - Healthier alternatives
 - Simple summary
+
+For allergens and additives, only identify items that are explicitly supported
+by the supplied ingredients or product information.
+
+If something cannot be verified, write:
+"Data unavailable".
 `;
+
+    console.log(
+      `[Barcode] Sending verified database information to Gemini...`
+    );
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.6-flash',
@@ -519,8 +708,11 @@ Provide:
       contents: promptText,
 
       config: {
-        systemInstruction: FOOD_ANALYSIS_SYSTEM_PROMPT,
+        systemInstruction:
+          FOOD_ANALYSIS_SYSTEM_PROMPT,
+
         responseMimeType: 'application/json',
+
         temperature: 0.1,
       },
     });
@@ -543,7 +735,7 @@ Provide:
         JSON.parse(cleanJsonString);
     } catch (parseError) {
       console.error(
-        'Barcode Gemini JSON parsing failed:',
+        '[Barcode] Gemini JSON parsing failed:',
         cleanJsonString
       );
 
@@ -553,8 +745,7 @@ Provide:
     }
 
     /* -----------------------------------------------------
-       FORCE VERIFIED BARCODE DATABASE VALUES
-       INTO RESULT WHEN AVAILABLE
+       FORCE VERIFIED DATABASE VALUES
     ----------------------------------------------------- */
 
     aiResult.productName =
@@ -564,16 +755,23 @@ Provide:
       brand;
 
     aiResult.barcode =
-      barcode;
+      cleanBarcode;
 
     aiResult.servingSize =
       servingSize;
+
+    /* -----------------------------------------------------
+       VERIFIED NUTRITION
+    ----------------------------------------------------- */
 
     if (
       calories !== 'Data unavailable'
     ) {
       aiResult.calories =
         `${calories} kcal`;
+    } else {
+      aiResult.calories =
+        'Data unavailable';
     }
 
     if (
@@ -581,6 +779,9 @@ Provide:
     ) {
       aiResult.protein =
         `${protein} g`;
+    } else {
+      aiResult.protein =
+        'Data unavailable';
     }
 
     if (
@@ -588,6 +789,9 @@ Provide:
     ) {
       aiResult.fat =
         `${fat} g`;
+    } else {
+      aiResult.fat =
+        'Data unavailable';
     }
 
     if (
@@ -595,6 +799,9 @@ Provide:
     ) {
       aiResult.sugar =
         `${sugar} g`;
+    } else {
+      aiResult.sugar =
+        'Data unavailable';
     }
 
     if (
@@ -602,6 +809,9 @@ Provide:
     ) {
       aiResult.salt =
         `${salt} g`;
+    } else {
+      aiResult.salt =
+        'Data unavailable';
     }
 
     if (
@@ -609,14 +819,25 @@ Provide:
     ) {
       aiResult.fiber =
         `${fiber} g`;
+    } else {
+      aiResult.fiber =
+        'Data unavailable';
     }
 
     if (
-      carbohydrates !== 'Data unavailable'
+      carbohydrates !==
+      'Data unavailable'
     ) {
       aiResult.carbohydrates =
         `${carbohydrates} g`;
+    } else {
+      aiResult.carbohydrates =
+        'Data unavailable';
     }
+
+    /* -----------------------------------------------------
+       VERIFIED INGREDIENTS
+    ----------------------------------------------------- */
 
     if (ingredientsText) {
       aiResult.ingredients =
@@ -627,7 +848,13 @@ Provide:
               item.trim()
           )
           .filter(Boolean);
+    } else {
+      aiResult.ingredients = [];
     }
+
+    /* -----------------------------------------------------
+       PRODUCT IMAGE
+    ----------------------------------------------------- */
 
     if (imageUrl) {
       aiResult.imageUrl =
@@ -635,17 +862,48 @@ Provide:
     }
 
     /* -----------------------------------------------------
+       DATABASE METADATA
+    ----------------------------------------------------- */
+
+    aiResult.barcodeVerified = true;
+
+    aiResult.barcodeSource =
+      'Open Food Facts';
+
+    aiResult.nutriScore =
+      nutriScore;
+
+    /* -----------------------------------------------------
        RETURN RESULT
     ----------------------------------------------------- */
 
+    console.log(
+      `[Barcode] Analysis completed successfully for ${cleanBarcode}.`
+    );
+
+    console.log(
+      `=================================================`
+    );
+
     return res.json({
       found: true,
+
+      barcode: cleanBarcode,
+
       data: aiResult,
     });
   } catch (err: any) {
     console.error(
-      'Error in /api/analyze-barcode:',
+      '================================================='
+    );
+
+    console.error(
+      '[Barcode] Error in /api/analyze-barcode:',
       err
+    );
+
+    console.error(
+      '================================================='
     );
 
     return res.status(500).json({
@@ -681,6 +939,10 @@ app.post('/api/search-products', async (req, res) => {
       `&action=process` +
       `&json=1` +
       `&page_size=8`;
+
+    console.log(
+      `[Search] Product search requested: ${query}`
+    );
 
     const offRes =
       await fetch(offUrl);
@@ -732,19 +994,23 @@ app.post('/api/search-products', async (req, res) => {
                 p.nutriments?.[
                   'sugars_100g'
                 ] !== undefined
-                  ? `${p.nutriments.sugars_100g} g`
+                  ? `${p.nutriments['sugars_100g']} g`
                   : 'Data unavailable',
 
               protein:
                 p.nutriments?.[
                   'proteins_100g'
                 ] !== undefined
-                  ? `${p.nutriments.proteins_100g} g`
+                  ? `${p.nutriments['proteins_100g']} g`
                   : 'Data unavailable',
             })
           );
       }
     }
+
+    console.log(
+      `[Search] Products returned: ${products.length}`
+    );
 
     return res.json({
       success: true,
@@ -805,12 +1071,9 @@ async function startServer() {
       )
     );
 
-    /*
-      SPA fallback.
-
-      Using app.use() here instead of app.get('*')
-      avoids Express 5 route-pattern problems.
-    */
+    /* ---------------------------------------------
+       SPA FALLBACK
+    --------------------------------------------- */
 
     app.use(
       (req, res, next) => {
@@ -841,6 +1104,21 @@ async function startServer() {
     () => {
       console.log(
         `[NutriScan AI] Server running on port ${PORT}`
+      );
+
+      console.log(
+        `[NutriScan AI] Environment: ${
+          process.env.NODE_ENV ||
+          'development'
+        }`
+      );
+
+      console.log(
+        `[NutriScan AI] Gemini API key configured: ${
+          process.env.GEMINI_API_KEY
+            ? 'YES'
+            : 'NO'
+        }`
       );
     }
   );
