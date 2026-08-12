@@ -26,6 +26,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const mountedRef = useRef(true);
 
+  // Store repeated barcode readings.
+  const barcodeVotesRef = useRef<Map<string, number>>(new Map());
+  const scanLockedRef = useRef(false);
+  const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [manualCode, setManualCode] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
@@ -33,11 +38,103 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     'environment'
   );
   const [switchingCamera, setSwitchingCamera] = useState(false);
+  const [scanStatus, setScanStatus] = useState(
+    'Position the barcode inside the scanning area'
+  );
+
+  /**
+   * Clean a barcode returned by the scanner.
+   */
+  const normalizeBarcode = (value: string): string => {
+    return value.replace(/\D/g, '').trim();
+  };
+
+  /**
+   * Basic validation for common retail barcode lengths.
+   *
+   * NOTE:
+   * We deliberately do not rely only on checksum validation because
+   * an optical misread can still produce another mathematically valid
+   * barcode.
+   */
+  const isPossibleRetailBarcode = (value: string): boolean => {
+    return (
+      value.length === 8 ||
+      value.length === 12 ||
+      value.length === 13 ||
+      value.length === 14
+    );
+  };
+
+  /**
+   * Reset repeated barcode readings.
+   */
+  const resetBarcodeVotes = () => {
+    barcodeVotesRef.current.clear();
+
+    if (scanTimerRef.current) {
+      clearTimeout(scanTimerRef.current);
+      scanTimerRef.current = null;
+    }
+
+    scanLockedRef.current = false;
+  };
+
+  /**
+   * Select the barcode which appeared most frequently.
+   *
+   * A barcode must be detected multiple times before we accept it.
+   */
+  const registerBarcodeReading = (decodedText: string) => {
+    if (!mountedRef.current || scanLockedRef.current) return;
+
+    const barcode = normalizeBarcode(decodedText);
+
+    if (!isPossibleRetailBarcode(barcode)) {
+      return;
+    }
+
+    const votes = barcodeVotesRef.current;
+    const currentVotes = votes.get(barcode) ?? 0;
+    const newVotes = currentVotes + 1;
+
+    votes.set(barcode, newVotes);
+
+    setScanStatus(`Barcode detected — confirming (${newVotes}/3)`);
+
+    /*
+     * Require the exact same barcode to be detected 3 times.
+     *
+     * This prevents one incorrect camera frame from immediately
+     * being sent to the backend.
+     */
+    if (newVotes >= 3) {
+      scanLockedRef.current = true;
+
+      setScanStatus('Barcode confirmed');
+
+      // Give the UI a tiny moment to show confirmation.
+      scanTimerRef.current = setTimeout(async () => {
+        if (!mountedRef.current) return;
+
+        await stopScanner();
+
+        if (mountedRef.current) {
+          onScanBarcode(barcode);
+        }
+      }, 250);
+    }
+  };
 
   const stopScanner = async () => {
     const scanner = scannerRef.current;
 
-    if (!scanner) return;
+    if (!scanner) {
+      if (mountedRef.current) {
+        setCameraActive(false);
+      }
+      return;
+    }
 
     try {
       const state = scanner.getState();
@@ -67,9 +164,12 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     facing: 'environment' | 'user' = cameraFacing
   ) => {
     setErrorMsg(null);
+    setScanStatus('Position the barcode inside the scanning area');
+
+    resetBarcodeVotes();
 
     try {
-      // Stop previous scanner first
+      // Stop previous scanner first.
       await stopScanner();
 
       if (!mountedRef.current) return;
@@ -81,11 +181,21 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       scannerRef.current = scanner;
 
       const config = {
+        /*
+         * 10 FPS is okay for normal phones.
+         * Increasing it unnecessarily can increase processing load.
+         */
         fps: 10,
+
+        /*
+         * A wider rectangle works better for horizontal EAN/UPC
+         * barcodes.
+         */
         qrbox: {
-          width: 280,
-          height: 140,
+          width: 300,
+          height: 160,
         },
+
         aspectRatio: 1.7777778,
 
         formatsToSupport: [
@@ -104,21 +214,28 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           facingMode: facing,
         },
         config,
+
+        /*
+         * IMPORTANT:
+         * Do NOT immediately accept the first decoded value.
+         *
+         * We collect repeated readings instead.
+         */
         (decodedText) => {
-          if (!decodedText || !mountedRef.current) return;
-
-          // Stop camera after successful scan
-          stopScanner();
-
-          onScanBarcode(decodedText);
+          registerBarcodeReading(decodedText);
         },
-        () => {
-          // Ignore normal frame-by-frame scan failures
-        }
+
+        /*
+         * Normal frame-by-frame failures are ignored.
+         */
+        () => {}
       );
 
       if (mountedRef.current) {
         setCameraActive(true);
+        setScanStatus(
+          'Keep the barcode steady until it is confirmed'
+        );
       }
     } catch (error: any) {
       console.error('Barcode camera error:', error);
@@ -158,10 +275,12 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const code = manualCode.trim();
+    const code = normalizeBarcode(manualCode);
 
-    if (!code) {
-      setErrorMsg('Please enter a valid barcode number.');
+    if (!code || !isPossibleRetailBarcode(code)) {
+      setErrorMsg(
+        'Please enter a valid 8, 12, 13, or 14 digit barcode number.'
+      );
       return;
     }
 
@@ -171,11 +290,13 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   useEffect(() => {
     mountedRef.current = true;
 
-    // Start rear camera automatically
+    // Start rear camera automatically.
     startScanner('environment');
 
     return () => {
       mountedRef.current = false;
+
+      resetBarcodeVotes();
 
       const scanner = scannerRef.current;
 
@@ -185,13 +306,13 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             scanner.stop().catch(() => {});
           }
         } catch {
-          // Ignore cleanup errors
+          // Ignore cleanup errors.
         }
 
         try {
           scanner.clear();
         } catch {
-          // Ignore cleanup errors
+          // Ignore cleanup errors.
         }
       }
 
@@ -271,6 +392,15 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               </div>
             )}
           </div>
+
+          {/* SCAN STATUS */}
+          {cameraActive && !errorMsg && (
+            <div className="p-3 bg-emerald-950/30 border border-emerald-500/20 rounded-xl text-center">
+              <p className="text-xs text-emerald-300 font-medium">
+                {scanStatus}
+              </p>
+            </div>
+          )}
 
           {/* CAMERA ERROR */}
           {errorMsg && (
