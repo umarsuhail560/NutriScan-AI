@@ -1,377 +1,526 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FoodScan, ScanMode } from '../types';
-import {
-  analyzeImageWithAI,
-  saveScanToFirestore,
-} from '../services/scanService';
+import { analyzeImageWithAI, saveScanToFirestore } from '../services/scanService';
 import {
   Camera,
   Upload,
-  Barcode,
-  Sparkles,
-  RefreshCw,
-  AlertCircle,
   X,
-  FileImage,
+  Loader2,
+  Image as ImageIcon,
+  CheckCircle2,
+  AlertCircle,
+  LogIn,
 } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 
 interface ScannerPageProps {
   onScanComplete: (scan: FoodScan) => void;
-  onOpenBarcodeScanner: () => void;
 }
+
+const labels = {
+  en: {
+    title: 'Scan Product',
+    subtitle: 'Take a photo or upload a product image',
+    camera: 'Camera',
+    upload: 'Upload',
+    takePhoto: 'Take Photo',
+    chooseImage: 'Choose Image',
+    analyze: 'Analyze Product',
+    analyzing: 'Analyzing...',
+    retake: 'Retake',
+    remove: 'Remove',
+    loginRequired: 'Google Login Required',
+    loginMessage:
+      'Please login with your Google account before scanning a product.',
+    loginGoogle: 'Login with Google',
+    loginSuccess: 'Login successful. You can now scan the product.',
+    loginFailed: 'Google login failed. Please try again.',
+    noImage: 'Please select or capture an image first.',
+    unavailable: 'Data unavailable',
+    error: 'Something went wrong. Please try again.',
+    tryAgain: 'Try Again',
+    goodPoints: 'Good points',
+    badPoints: 'Bad points',
+    warning: 'Warning',
+    benefit: 'Benefits',
+    summary: 'AI Summary',
+    dailyAdvice: 'Daily Advice',
+    ingredients: 'Ingredients',
+    artificialColors: 'Artificial Colors',
+    preservatives: 'Preservatives',
+    artificialSweeteners: 'Artificial Sweeteners',
+    additives: 'Additives',
+    allergens: 'Allergens',
+    servingSize: 'Serving Size',
+  },
+
+  es: {
+    title: 'Escanear producto',
+    subtitle: 'Toma una foto o sube una imagen del producto',
+    camera: 'Cámara',
+    upload: 'Subir',
+    takePhoto: 'Tomar foto',
+    chooseImage: 'Elegir imagen',
+    analyze: 'Analizar producto',
+    analyzing: 'Analizando...',
+    retake: 'Repetir',
+    remove: 'Eliminar',
+    loginRequired: 'Se requiere iniciar sesión con Google',
+    loginMessage:
+      'Inicia sesión con tu cuenta de Google antes de escanear un producto.',
+    loginGoogle: 'Iniciar sesión con Google',
+    loginSuccess: 'Inicio de sesión exitoso. Ahora puedes escanear el producto.',
+    loginFailed: 'Error al iniciar sesión con Google. Inténtalo de nuevo.',
+    noImage: 'Selecciona o captura una imagen primero.',
+    unavailable: 'Datos no disponibles',
+    error: 'Algo salió mal. Inténtalo de nuevo.',
+    tryAgain: 'Intentar de nuevo',
+    goodPoints: 'Aspectos positivos',
+    badPoints: 'Aspectos negativos',
+    warning: 'Advertencia',
+    benefit: 'Beneficios',
+    summary: 'Resumen de IA',
+    dailyAdvice: 'Consejo diario',
+    ingredients: 'Ingredientes',
+    artificialColors: 'Colorantes artificiales',
+    preservatives: 'Conservantes',
+    artificialSweeteners: 'Edulcorantes artificiales',
+    additives: 'Aditivos',
+    allergens: 'Alérgenos',
+    servingSize: 'Tamaño de porción',
+  },
+
+  fr: {
+    title: 'Scanner le produit',
+    subtitle: 'Prenez une photo ou téléchargez une image du produit',
+    camera: 'Caméra',
+    upload: 'Télécharger',
+    takePhoto: 'Prendre une photo',
+    chooseImage: 'Choisir une image',
+    analyze: 'Analyser le produit',
+    analyzing: 'Analyse...',
+    retake: 'Reprendre',
+    remove: 'Supprimer',
+    loginRequired: 'Connexion Google requise',
+    loginMessage:
+      'Veuillez vous connecter avec votre compte Google avant de scanner un produit.',
+    loginGoogle: 'Se connecter avec Google',
+    loginSuccess: 'Connexion réussie. Vous pouvez maintenant scanner le produit.',
+    loginFailed: 'Échec de la connexion Google. Veuillez réessayer.',
+    noImage: 'Veuillez d’abord sélectionner ou prendre une image.',
+    unavailable: 'Données indisponibles',
+    error: 'Une erreur est survenue. Veuillez réessayer.',
+    tryAgain: 'Réessayer',
+    goodPoints: 'Points positifs',
+    badPoints: 'Points négatifs',
+    warning: 'Avertissement',
+    benefit: 'Avantages',
+    summary: 'Résumé IA',
+    dailyAdvice: 'Conseil quotidien',
+    ingredients: 'Ingrédients',
+    artificialColors: 'Colorants artificiels',
+    preservatives: 'Conservateurs',
+    artificialSweeteners: 'Édulcorants artificiels',
+    additives: 'Additifs',
+    allergens: 'Allergènes',
+    servingSize: 'Taille de portion',
+  },
+
+  de: {
+    title: 'Produkt scannen',
+    subtitle: 'Foto aufnehmen oder Produktbild hochladen',
+    camera: 'Kamera',
+    upload: 'Hochladen',
+    takePhoto: 'Foto aufnehmen',
+    chooseImage: 'Bild auswählen',
+    analyze: 'Produkt analysieren',
+    analyzing: 'Analysieren...',
+    retake: 'Erneut aufnehmen',
+    remove: 'Entfernen',
+    loginRequired: 'Google-Anmeldung erforderlich',
+    loginMessage:
+      'Bitte melden Sie sich mit Ihrem Google-Konto an, bevor Sie ein Produkt scannen.',
+    loginGoogle: 'Mit Google anmelden',
+    loginSuccess: 'Anmeldung erfolgreich. Sie können das Produkt jetzt scannen.',
+    loginFailed: 'Google-Anmeldung fehlgeschlagen. Bitte versuchen Sie es erneut.',
+    noImage: 'Bitte wählen Sie zuerst ein Bild aus oder nehmen Sie eines auf.',
+    unavailable: 'Daten nicht verfügbar',
+    error: 'Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.',
+    tryAgain: 'Erneut versuchen',
+    goodPoints: 'Positive Punkte',
+    badPoints: 'Negative Punkte',
+    warning: 'Warnung',
+    benefit: 'Vorteile',
+    summary: 'KI-Zusammenfassung',
+    dailyAdvice: 'Täglicher Rat',
+    ingredients: 'Zutaten',
+    artificialColors: 'Künstliche Farbstoffe',
+    preservatives: 'Konservierungsstoffe',
+    artificialSweeteners: 'Künstliche Süßstoffe',
+    additives: 'Zusatzstoffe',
+    allergens: 'Allergene',
+    servingSize: 'Portionsgröße',
+  },
+
+  hi: {
+    title: 'उत्पाद स्कैन करें',
+    subtitle: 'फोटो लें या उत्पाद की तस्वीर अपलोड करें',
+    camera: 'कैमरा',
+    upload: 'अपलोड',
+    takePhoto: 'फोटो लें',
+    chooseImage: 'तस्वीर चुनें',
+    analyze: 'उत्पाद का विश्लेषण करें',
+    analyzing: 'विश्लेषण हो रहा है...',
+    retake: 'दोबारा लें',
+    remove: 'हटाएं',
+    loginRequired: 'Google लॉगिन आवश्यक है',
+    loginMessage:
+      'उत्पाद स्कैन करने से पहले अपने Google खाते से लॉगिन करें।',
+    loginGoogle: 'Google से लॉगिन करें',
+    loginSuccess: 'लॉगिन सफल हुआ। अब आप उत्पाद स्कैन कर सकते हैं।',
+    loginFailed: 'Google लॉगिन विफल हुआ। कृपया फिर प्रयास करें।',
+    noImage: 'पहले कोई तस्वीर चुनें या लें।',
+    unavailable: 'डेटा उपलब्ध नहीं है',
+    error: 'कुछ गलत हो गया। कृपया फिर प्रयास करें।',
+    tryAgain: 'फिर प्रयास करें',
+    goodPoints: 'अच्छी बातें',
+    badPoints: 'खराब बातें',
+    warning: 'चेतावनी',
+    benefit: 'लाभ',
+    summary: 'AI सारांश',
+    dailyAdvice: 'दैनिक सलाह',
+    ingredients: 'सामग्री',
+    artificialColors: 'कृत्रिम रंग',
+    preservatives: 'प्रिजर्वेटिव',
+    artificialSweeteners: 'कृत्रिम स्वीटनर',
+    additives: 'एडिटिव्स',
+    allergens: 'एलर्जेन',
+    servingSize: 'सर्विंग आकार',
+  },
+
+  ar: {
+    title: 'فحص المنتج',
+    subtitle: 'التقط صورة أو حمّل صورة للمنتج',
+    camera: 'الكاميرا',
+    upload: 'رفع',
+    takePhoto: 'التقاط صورة',
+    chooseImage: 'اختيار صورة',
+    analyze: 'تحليل المنتج',
+    analyzing: 'جارٍ التحليل...',
+    retake: 'إعادة الالتقاط',
+    remove: 'إزالة',
+    loginRequired: 'تسجيل الدخول عبر Google مطلوب',
+    loginMessage:
+      'يرجى تسجيل الدخول باستخدام حساب Google قبل فحص المنتج.',
+    loginGoogle: 'تسجيل الدخول عبر Google',
+    loginSuccess: 'تم تسجيل الدخول بنجاح. يمكنك الآن فحص المنتج.',
+    loginFailed: 'فشل تسجيل الدخول عبر Google. حاول مرة أخرى.',
+    noImage: 'يرجى اختيار صورة أو التقاطها أولاً.',
+    unavailable: 'البيانات غير متاحة',
+    error: 'حدث خطأ ما. حاول مرة أخرى.',
+    tryAgain: 'حاول مرة أخرى',
+    goodPoints: 'النقاط الجيدة',
+    badPoints: 'النقاط السيئة',
+    warning: 'تحذير',
+    benefit: 'الفوائد',
+    summary: 'ملخص الذكاء الاصطناعي',
+    dailyAdvice: 'النصيحة اليومية',
+    ingredients: 'المكونات',
+    artificialColors: 'الألوان الصناعية',
+    preservatives: 'المواد الحافظة',
+    artificialSweeteners: 'المحليات الصناعية',
+    additives: 'الإضافات',
+    allergens: 'مسببات الحساسية',
+    servingSize: 'حجم الحصة',
+  },
+};
+
+type LanguageKey = keyof typeof labels;
 
 export const ScannerPage: React.FC<ScannerPageProps> = ({
   onScanComplete,
-  onOpenBarcodeScanner,
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { userProfile, updateUserStats } = useAuth();
+  const { firebaseUser, userProfile, signInWithGoogle, updateUserStats } =
+    useAuth();
+  const { theme, language } = useTheme();
 
-  const initialMode: ScanMode = location.state?.mode || 'photo';
-  const [mode, setMode] = useState<ScanMode>(initialMode);
+  const currentLanguage =
+    (language as LanguageKey) in labels
+      ? (language as LanguageKey)
+      : 'en';
 
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const t = labels[currentLanguage];
 
-  const [cameraActive, setCameraActive] = useState<boolean>(false);
+  const isDark = theme === 'dark';
 
-  // Rear camera is the default
-  const [cameraFacing, setCameraFacing] = useState<
-    'user' | 'environment'
-  >('environment');
-
-  const [cameraError, setCameraError] = useState<string | null>(null);
-
+  const [mode, setMode] = useState<ScanMode>('photo');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [userPrompt, setUserPrompt] = useState<string>('');
-  const [analyzing, setAnalyzing] = useState<boolean>(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loginMessage, setLoginMessage] = useState<string | null>(null);
 
-  // --------------------------------------------------
-  // STOP CAMERA
-  // --------------------------------------------------
-  const stopCamera = () => {
-    if (videoRef.current?.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
-      stream.getTracks().forEach((track) => {
-        track.stop();
-      });
-
-      videoRef.current.srcObject = null;
-    }
-
-    setCameraActive(false);
-  };
-
-  // --------------------------------------------------
-  // START CAMERA
-  // --------------------------------------------------
-  const startCamera = async (
-    facing: 'user' | 'environment' = cameraFacing
+  const handleImageSelect = (
+    event: React.ChangeEvent<HTMLInputElement>
   ) => {
-    setCameraError(null);
+    const file = event.target.files?.[0];
 
-    // Stop previous camera before starting another one
-    stopCamera();
-
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error(
-          'Camera access is not supported by this browser.'
-        );
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: {
-            ideal: facing,
-          },
-          width: {
-            ideal: 1280,
-          },
-          height: {
-            ideal: 720,
-          },
-        },
-        audio: false,
-      });
-
-      if (!videoRef.current) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-
-      videoRef.current.srcObject = stream;
-
-      try {
-        await videoRef.current.play();
-      } catch (playError) {
-        console.warn('Video play error:', playError);
-      }
-
-      setCameraActive(true);
-    } catch (err: any) {
-      console.error('Camera access error:', err);
-
-      setCameraActive(false);
-
-      if (facing === 'environment') {
-        setCameraError(
-          'Rear camera could not be opened. Try switching to the front camera.'
-        );
-      } else {
-        setCameraError(
-          'Front camera could not be opened. Try switching to the rear camera.'
-        );
-      }
-    }
-  };
-
-  // --------------------------------------------------
-  // SWITCH FRONT / REAR CAMERA
-  // --------------------------------------------------
-  const switchCamera = async () => {
-    const newFacing: 'user' | 'environment' =
-      cameraFacing === 'environment' ? 'user' : 'environment';
-
-    setCameraFacing(newFacing);
-
-    await startCamera(newFacing);
-  };
-
-  // --------------------------------------------------
-  // INITIALIZE CAMERA
-  // --------------------------------------------------
-  useEffect(() => {
-    if (mode === 'photo' && !selectedImage) {
-      startCamera(cameraFacing);
-    } else {
-      stopCamera();
-    }
-
-    return () => {
-      stopCamera();
-    };
-  }, [mode, selectedImage]);
-
-  // --------------------------------------------------
-  // CAPTURE PHOTO
-  // --------------------------------------------------
-  const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) {
-      return;
-    }
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-
-    const ctx = canvas.getContext('2d');
-
-    if (ctx) {
-      ctx.drawImage(
-        video,
-        0,
-        0,
-        canvas.width,
-        canvas.height
-      );
-
-      const dataUrl = canvas.toDataURL(
-        'image/jpeg',
-        0.85
-      );
-
-      setSelectedImage(dataUrl);
-      stopCamera();
-    }
-  };
-
-  // --------------------------------------------------
-  // FILE UPLOAD
-  // --------------------------------------------------
-  const handleFileUpload = (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = e.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    // Basic image validation
-    if (!file.type.startsWith('image/')) {
-      setError('Please select a valid image file.');
-      return;
-    }
-
-    // 20 MB limit
-    if (file.size > 20 * 1024 * 1024) {
-      setError('Image size must be less than 20MB.');
-      return;
-    }
+    if (!file) return;
 
     setError(null);
+    setLoginMessage(null);
 
     const reader = new FileReader();
 
     reader.onload = () => {
-      setSelectedImage(reader.result as string);
+      if (typeof reader.result === 'string') {
+        setSelectedImage(reader.result);
+      }
     };
 
     reader.onerror = () => {
-      setError('Unable to read the selected image.');
+      setError(t.error);
     };
 
     reader.readAsDataURL(file);
+
+    event.target.value = '';
   };
 
-  // --------------------------------------------------
-  // AI ANALYSIS
-  // --------------------------------------------------
+  const handleRemoveImage = () => {
+    setSelectedImage(null);
+    setError(null);
+    setLoginMessage(null);
+  };
+
+  const handleGoogleLogin = async () => {
+    if (firebaseUser) return;
+
+    setIsLoggingIn(true);
+    setError(null);
+    setLoginMessage(null);
+
+    try {
+      await signInWithGoogle();
+
+      setLoginMessage(t.loginSuccess);
+    } catch (err) {
+      console.error('Google login failed:', err);
+      setError(t.loginFailed);
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
   const runAnalysis = async () => {
-    if (!selectedImage) {
+    setError(null);
+    setLoginMessage(null);
+
+    /*
+     * IMPORTANT:
+     * Authentication is checked BEFORE sending the image to the AI backend.
+     * Therefore unauthenticated users cannot perform a scan/analyze operation.
+     */
+    if (!firebaseUser || !userProfile?.uid) {
+      setError(t.loginMessage);
       return;
     }
 
-    setAnalyzing(true);
-    setError(null);
+    if (!selectedImage) {
+      setError(t.noImage);
+      return;
+    }
+
+    setIsAnalyzing(true);
 
     try {
+      const base64Image = selectedImage.includes(',')
+        ? selectedImage.split(',')[1]
+        : selectedImage;
+
+      const mimeType = selectedImage.match(
+        /^data:(image\/[a-zA-Z0-9.+-]+);base64,/
+      )?.[1] || 'image/jpeg';
+
       const aiData = await analyzeImageWithAI(
-        selectedImage,
-        'image/jpeg',
-        userPrompt
+        base64Image,
+        mimeType,
+        'Analyze this product packaging image carefully. Identify whether the product is edible/food or non-edible/cosmetic. Do not invent nutrition values. If information is missing, return "Data unavailable".'
       );
 
-      const isHealthy =
-        (aiData.healthScore || 50) >= 60;
+      /*
+       * Keep the server's non-edible enforcement.
+       * The backend is responsible for setting:
+       * healthScore = 0
+       * grade = E
+       * riskLevel = Avoid Frequently
+       * for non-edible products.
+       */
+      const healthScore =
+        typeof aiData?.healthScore === 'number'
+          ? Math.max(0, Math.min(100, aiData.healthScore))
+          : 0;
+
+      const grade =
+        aiData?.grade === 'A+' ||
+        aiData?.grade === 'A' ||
+        aiData?.grade === 'B' ||
+        aiData?.grade === 'C' ||
+        aiData?.grade === 'D' ||
+        aiData?.grade === 'E'
+          ? aiData.grade
+          : 'E';
+
+      const riskLevel =
+        aiData?.riskLevel === 'Very Healthy' ||
+        aiData?.riskLevel === 'Healthy' ||
+        aiData?.riskLevel === 'Moderate' ||
+        aiData?.riskLevel === 'Unhealthy' ||
+        aiData?.riskLevel === 'Avoid Frequently'
+          ? aiData.riskLevel
+          : 'Avoid Frequently';
 
       const scanPayload: Omit<FoodScan, 'id'> = {
-        userId: userProfile?.uid || 'guest',
+        userId: userProfile.uid,
 
         productName:
-          aiData.productName ||
-          'Scanned Food Product',
+          aiData?.productName || 'Unknown Product',
 
         brand:
-          aiData.brand ||
-          'Unknown',
+          aiData?.brand || 'Unknown Brand',
 
-        healthScore:
-          aiData.healthScore ?? 65,
+        barcode:
+          aiData?.barcode || undefined,
 
-        grade:
-          aiData.grade ||
-          'B',
+        healthScore,
 
-        riskLevel:
-          aiData.riskLevel ||
-          'Healthy',
+        grade,
+
+        riskLevel,
 
         calories:
-          aiData.calories ||
-          '200 kcal',
+          aiData?.calories || t.unavailable,
 
         protein:
-          aiData.protein ||
-          '5g',
+          aiData?.protein || t.unavailable,
 
         fat:
-          aiData.fat ||
-          '4g',
+          aiData?.fat || t.unavailable,
 
         sugar:
-          aiData.sugar ||
-          '3g',
+          aiData?.sugar || t.unavailable,
 
         salt:
-          aiData.salt ||
-          '0.2g',
+          aiData?.salt || t.unavailable,
 
         fiber:
-          aiData.fiber ||
-          '2g',
+          aiData?.fiber || t.unavailable,
 
         carbohydrates:
-          aiData.carbohydrates ||
-          '25g',
+          aiData?.carbohydrates || t.unavailable,
 
         servingSize:
-          aiData.servingSize ||
-          '100g',
+          aiData?.servingSize || t.unavailable,
 
         ingredients:
-          aiData.ingredients ||
-          [],
+          Array.isArray(aiData?.ingredients)
+            ? aiData.ingredients
+            : [],
 
         artificialColors:
-          aiData.artificialColors ||
-          [],
+          Array.isArray(aiData?.artificialColors)
+            ? aiData.artificialColors
+            : [],
 
         preservatives:
-          aiData.preservatives ||
-          [],
+          Array.isArray(aiData?.preservatives)
+            ? aiData.preservatives
+            : [],
 
         artificialSweeteners:
-          aiData.artificialSweeteners ||
-          [],
+          Array.isArray(aiData?.artificialSweeteners)
+            ? aiData.artificialSweeteners
+            : [],
 
         additives:
-          aiData.additives ||
-          [],
+          Array.isArray(aiData?.additives)
+            ? aiData.additives
+            : [],
 
         allergens:
-          aiData.allergens ||
-          [],
+          Array.isArray(aiData?.allergens)
+            ? aiData.allergens
+            : [],
 
-        suitability:
-          aiData.suitability || {
-            forChildren: true,
-            childrenNotes: '',
-            forDiabetics: false,
-            diabeticNotes: '',
-            forPregnant: true,
-            pregnantNotes: '',
-            forElderly: true,
-            elderlyNotes: '',
-            forGym: true,
-            gymNotes: '',
-          },
+        suitability: {
+          forChildren:
+            Boolean(aiData?.suitability?.forChildren),
+
+          childrenNotes:
+            aiData?.suitability?.childrenNotes || t.unavailable,
+
+          forDiabetics:
+            Boolean(aiData?.suitability?.forDiabetics),
+
+          diabeticNotes:
+            aiData?.suitability?.diabeticNotes || t.unavailable,
+
+          forPregnant:
+            Boolean(aiData?.suitability?.forPregnant),
+
+          pregnantNotes:
+            aiData?.suitability?.pregnantNotes || t.unavailable,
+
+          forElderly:
+            Boolean(aiData?.suitability?.forElderly),
+
+          elderlyNotes:
+            aiData?.suitability?.elderlyNotes || t.unavailable,
+
+          forGym:
+            Boolean(aiData?.suitability?.forGym),
+
+          gymNotes:
+            aiData?.suitability?.gymNotes || t.unavailable,
+        },
 
         goodPoints:
-          aiData.goodPoints ||
-          [],
+          Array.isArray(aiData?.goodPoints)
+            ? aiData.goodPoints
+            : [],
 
         badPoints:
-          aiData.badPoints ||
-          [],
+          Array.isArray(aiData?.badPoints)
+            ? aiData.badPoints
+            : [],
 
         warnings:
-          aiData.warnings ||
-          [],
+          Array.isArray(aiData?.warnings)
+            ? aiData.warnings
+            : [],
 
         benefits:
-          aiData.benefits ||
-          [],
+          Array.isArray(aiData?.benefits)
+            ? aiData.benefits
+            : [],
 
         dailyAdvice:
-          aiData.dailyAdvice ||
-          '',
+          aiData?.dailyAdvice || t.unavailable,
 
         alternatives:
-          aiData.alternatives ||
-          [],
+          Array.isArray(aiData?.alternatives)
+            ? aiData.alternatives
+            : [],
 
         summary:
-          aiData.summary ||
-          'Nutritional analysis complete.',
+          aiData?.summary || t.unavailable,
 
         imageUrl:
           selectedImage,
@@ -379,383 +528,396 @@ export const ScannerPage: React.FC<ScannerPageProps> = ({
         createdAt:
           new Date().toISOString(),
 
-        isFavorite: false,
+        isFavorite:
+          false,
       };
 
-      // Login required for history
-      if (!userProfile?.uid) {
-        throw new Error(
-          'Please login before saving scan history'
-        );
-      }
-
-      const saved =
-        await saveScanToFirestore(
-          scanPayload,
-          userProfile.uid
-        );
-
-      await updateUserStats(isHealthy);
-
-      onScanComplete(saved);
-
-      navigate('/result');
-    } catch (err: any) {
-      console.error(
-        'Analysis error:',
-        err
+      /*
+       * Double-check that the authenticated UID is the UID being saved.
+       * No "guest" fallback exists here.
+       */
+      const savedScan = await saveScanToFirestore(
+        scanPayload,
+        firebaseUser.uid
       );
 
-      setError(
-        err?.message ||
-          'AI Analysis failed. Please ensure the image is clear and try again.'
-      );
+      await updateUserStats(healthScore >= 60);
+
+      onScanComplete(savedScan);
+
+      navigate('/result', {
+        state: {
+          from: location.pathname,
+        },
+      });
+    } catch (err) {
+      console.error('Product analysis failed:', err);
+
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : t.error;
+
+      setError(message);
     } finally {
-      setAnalyzing(false);
+      setIsAnalyzing(false);
     }
   };
 
-  // --------------------------------------------------
-  // UI
-  // --------------------------------------------------
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pb-28">
+    <div
+      className={`min-h-screen px-4 py-6 pb-28 transition-colors duration-300 ${
+        isDark
+          ? 'bg-slate-950 text-white'
+          : 'bg-slate-100 text-slate-900'
+      }`}
+    >
+      <div className="mx-auto w-full max-w-2xl">
 
-      {/* TOP BAR */}
-      <div className="p-4 border-b border-slate-800 bg-slate-900/80 flex items-center justify-between">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold">{t.title}</h1>
 
-        <div className="flex items-center gap-2">
-
-          <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
-            <Camera className="w-5 h-5" />
-          </div>
-
-          <h2 className="text-base font-bold font-['Outfit']">
-            AI Food Scanner
-          </h2>
-
-        </div>
-
-        {/* MODE SWITCHER */}
-        <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800">
-
-          <button
-            onClick={() => {
-              setMode('photo');
-              setSelectedImage(null);
-            }}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-              mode === 'photo'
-                ? 'bg-emerald-600 text-white'
-                : 'text-slate-400'
+          <p
+            className={`mt-1 text-sm ${
+              isDark
+                ? 'text-slate-400'
+                : 'text-slate-600'
             }`}
           >
-            Camera
-          </button>
+            {t.subtitle}
+          </p>
+        </div>
 
-          <button
-            onClick={() => {
-              setMode('upload');
-              setSelectedImage(null);
-            }}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-              mode === 'upload'
-                ? 'bg-emerald-600 text-white'
-                : 'text-slate-400'
+        {/* Login Required */}
+        {!firebaseUser && (
+          <div
+            className={`mb-5 rounded-2xl border p-5 ${
+              isDark
+                ? 'border-amber-500/30 bg-amber-500/10'
+                : 'border-amber-200 bg-amber-50'
             }`}
           >
-            Upload
-          </button>
+            <div className="flex items-start gap-3">
+              <LogIn
+                className="mt-0.5 shrink-0"
+                size={22}
+              />
 
-          <button
-            onClick={onOpenBarcodeScanner}
-            className="px-3 py-1 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all flex items-center gap-1"
-          >
-            <Barcode className="w-3.5 h-3.5" />
-            Barcode
-          </button>
+              <div className="flex-1">
+                <h2 className="font-semibold">
+                  {t.loginRequired}
+                </h2>
 
-        </div>
-      </div>
+                <p
+                  className={`mt-1 text-sm ${
+                    isDark
+                      ? 'text-slate-300'
+                      : 'text-slate-600'
+                  }`}
+                >
+                  {t.loginMessage}
+                </p>
 
-      <div className="max-w-md mx-auto p-4 space-y-5">
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={isLoggingIn}
+                  className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isLoggingIn ? (
+                    <Loader2
+                      size={18}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <LogIn size={18} />
+                  )}
 
-        {/* ERROR */}
-        {error && (
-          <div className="p-3 bg-rose-950/40 border border-rose-500/40 rounded-xl text-xs text-rose-300 flex items-center gap-2">
-
-            <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
-
-            <span>
-              {error}
-            </span>
-
+                  {isLoggingIn
+                    ? t.analyzing
+                    : t.loginGoogle}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* CAMERA VIEWPORT */}
-        <div className="relative rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 aspect-[4/3] flex items-center justify-center shadow-2xl">
+        {/* Login Success */}
+        {loginMessage && (
+          <div
+            className={`mb-5 flex items-center gap-3 rounded-xl border p-4 ${
+              isDark
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+            }`}
+          >
+            <CheckCircle2
+              size={20}
+              className="shrink-0"
+            />
 
-          {/* ANALYZING OVERLAY */}
-          {analyzing && (
-            <div className="absolute inset-0 z-20 bg-slate-950/60 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center space-y-4">
+            <span className="text-sm font-medium">
+              {loginMessage}
+            </span>
+          </div>
+        )}
 
-              <div className="relative w-20 h-20 flex items-center justify-center">
+        {/* Error */}
+        {error && (
+          <div
+            className={`mb-5 flex items-start gap-3 rounded-xl border p-4 ${
+              isDark
+                ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                : 'border-red-200 bg-red-50 text-red-700'
+            }`}
+          >
+            <AlertCircle
+              size={20}
+              className="mt-0.5 shrink-0"
+            />
 
-                <div className="absolute inset-0 rounded-full bg-emerald-500/20 animate-ping" />
+            <div className="flex-1">
+              <p className="text-sm font-medium">
+                {error}
+              </p>
 
-                <div className="w-16 h-16 rounded-full bg-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/40">
-
-                  <Sparkles
-                    className="w-8 h-8 text-white animate-spin"
-                    style={{
-                      animationDuration: '3s',
-                    }}
-                  />
-
-                </div>
-
-              </div>
-
-              <div>
-
-                <h4 className="text-base font-extrabold text-white font-['Outfit']">
-                  Gemini AI Inspecting...
-                </h4>
-
-                <p className="text-xs text-emerald-300 mt-1">
-                  Analyzing ingredients, additives, sugars & risk scores
-                </p>
-
-              </div>
-
-              <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-
-                <div className="h-full bg-emerald-400 animate-pulse w-full" />
-
-              </div>
-
-            </div>
-          )}
-
-          {/* SELECTED IMAGE */}
-          {selectedImage ? (
-
-            <div className="relative w-full h-full">
-
-              <img
-                src={selectedImage}
-                alt="Captured food packaging"
-                className="w-full h-full object-cover"
-              />
-
-              {!analyzing && (
+              {!firebaseUser && (
                 <button
                   type="button"
-                  onClick={() => setSelectedImage(null)}
-                  className="absolute top-3 right-3 p-2 bg-slate-950/80 text-white rounded-full hover:bg-slate-900"
+                  onClick={handleGoogleLogin}
+                  disabled={isLoggingIn}
+                  className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
                 >
-                  <X className="w-5 h-5" />
+                  <LogIn size={16} />
+                  {t.loginGoogle}
                 </button>
               )}
-
             </div>
+          </div>
+        )}
 
-          ) : mode === 'photo' ? (
+        {/* Mode selector */}
+        <div
+          className={`mb-5 grid grid-cols-2 gap-2 rounded-2xl p-1 ${
+            isDark
+              ? 'bg-slate-900'
+              : 'bg-white shadow-sm'
+          }`}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setMode('photo');
+              setError(null);
+            }}
+            className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
+              mode === 'photo'
+                ? 'bg-emerald-600 text-white'
+                : isDark
+                ? 'text-slate-400 hover:bg-slate-800'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Camera size={18} />
+            {t.camera}
+          </button>
 
-            /* CAMERA MODE */
-
-            cameraError ? (
-
-              <div className="p-6 text-center space-y-3">
-
-                <Camera className="w-10 h-10 text-slate-600 mx-auto" />
-
-                <p className="text-xs text-slate-400">
-                  {cameraError}
-                </p>
-
-                <div className="flex gap-2 justify-center">
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCameraError(null);
-                      startCamera(
-                        cameraFacing
-                      );
-                    }}
-                    className="px-4 py-2 bg-emerald-600 text-white font-bold text-xs rounded-xl"
-                  >
-                    Retry Camera
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setMode('upload')
-                    }
-                    className="px-4 py-2 bg-slate-800 text-white font-bold text-xs rounded-xl"
-                  >
-                    Upload Instead
-                  </button>
-
-                </div>
-
-              </div>
-
-            ) : (
-
-              <div className="relative w-full h-full flex items-center justify-center bg-slate-950">
-
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover"
-                />
-
-                <canvas
-                  ref={canvasRef}
-                  className="hidden"
-                />
-
-                {/* CAMERA SWITCH BUTTON */}
-                {cameraActive && !analyzing && (
-                  <button
-                    type="button"
-                    onClick={switchCamera}
-                    className="absolute top-3 right-3 z-10 p-3 bg-slate-950/80 backdrop-blur-sm text-white rounded-full border border-slate-700 hover:bg-slate-900 active:scale-95 transition-all shadow-lg"
-                    title="Switch camera"
-                    aria-label="Switch between front and rear camera"
-                  >
-                    <RefreshCw className="w-5 h-5" />
-                  </button>
-                )}
-
-                {/* CAMERA LABEL */}
-                {cameraActive && !analyzing && (
-                  <div className="absolute top-4 left-4 z-10 bg-slate-950/70 backdrop-blur-sm text-[10px] font-bold text-emerald-300 px-3 py-1.5 rounded-full border border-emerald-500/30">
-                    {cameraFacing === 'environment'
-                      ? 'Rear Camera'
-                      : 'Front Camera'}
-                  </div>
-                )}
-
-                {/* TARGET FRAME */}
-                <div className="absolute inset-8 border-2 border-dashed border-emerald-400/70 rounded-2xl pointer-events-none flex items-center justify-center">
-
-                  <span className="bg-slate-950/70 backdrop-blur-sm text-[11px] font-semibold text-emerald-300 px-3 py-1 rounded-full border border-emerald-500/30">
-                    Align food label / nutrition facts here
-                  </span>
-
-                </div>
-
-              </div>
-            )
-
-          ) : (
-
-            /* UPLOAD MODE */
-
-            <label className="w-full h-full flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-3xl cursor-pointer bg-slate-950/50 transition-all group">
-
-              <FileImage className="w-12 h-12 text-slate-500 group-hover:text-emerald-400 transition-colors mb-2" />
-
-              <span className="text-xs font-bold text-slate-200">
-                Tap to upload food packaging photo
-              </span>
-
-              <span className="text-[10px] text-slate-500 mt-1">
-                PNG, JPG, WEBP up to 20MB
-              </span>
-
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-
-            </label>
-          )}
-
+          <button
+            type="button"
+            onClick={() => {
+              setMode('upload');
+              setError(null);
+            }}
+            className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
+              mode === 'upload'
+                ? 'bg-emerald-600 text-white'
+                : isDark
+                ? 'text-slate-400 hover:bg-slate-800'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Upload size={18} />
+            {t.upload}
+          </button>
         </div>
 
-        {/* ACTION CONTROLS */}
+        {/* Hidden file inputs */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleImageSelect}
+        />
 
-        {selectedImage ? (
+        <input
+          ref={uploadInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleImageSelect}
+        />
 
-          <div className="space-y-3">
-
-            <div>
-
-              <label className="text-xs font-semibold text-slate-300 block mb-1">
-                Optional note (e.g. "I am diabetic" or "Check for peanuts"):
-              </label>
-
-              <input
-                type="text"
-                placeholder="Add dietary note or question..."
-                value={userPrompt}
-                onChange={(e) =>
-                  setUserPrompt(e.target.value)
-                }
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-
+        {/* Image area */}
+        {!selectedImage ? (
+          <div
+            className={`rounded-3xl border-2 border-dashed p-8 text-center ${
+              isDark
+                ? 'border-slate-700 bg-slate-900'
+                : 'border-slate-300 bg-white'
+            }`}
+          >
+            <div
+              className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full ${
+                isDark
+                  ? 'bg-slate-800'
+                  : 'bg-slate-100'
+              }`}
+            >
+              {mode === 'photo' ? (
+                <Camera size={30} />
+              ) : (
+                <ImageIcon size={30} />
+              )}
             </div>
 
-            <div className="flex gap-2">
+            <h2 className="text-lg font-semibold">
+              {mode === 'photo'
+                ? t.takePhoto
+                : t.chooseImage}
+            </h2>
+
+            <p
+              className={`mt-2 text-sm ${
+                isDark
+                  ? 'text-slate-400'
+                  : 'text-slate-500'
+              }`}
+            >
+              {mode === 'photo'
+                ? 'Use your camera to capture the product packaging.'
+                : 'Select a product image from your device.'}
+            </p>
+
+            <button
+              type="button"
+              onClick={() =>
+                mode === 'photo'
+                  ? cameraInputRef.current?.click()
+                  : uploadInputRef.current?.click()
+              }
+              className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 font-semibold text-white transition hover:bg-emerald-700"
+            >
+              {mode === 'photo' ? (
+                <Camera size={20} />
+              ) : (
+                <Upload size={20} />
+              )}
+
+              {mode === 'photo'
+                ? t.takePhoto
+                : t.chooseImage}
+            </button>
+          </div>
+        ) : (
+          <div
+            className={`overflow-hidden rounded-3xl border ${
+              isDark
+                ? 'border-slate-800 bg-slate-900'
+                : 'border-slate-200 bg-white'
+            }`}
+          >
+            {/* Image preview */}
+            <div className="relative">
+              <img
+                src={selectedImage}
+                alt="Selected product"
+                className="max-h-[500px] w-full object-contain"
+              />
+
+              <button
+                type="button"
+                onClick={handleRemoveImage}
+                disabled={isAnalyzing}
+                className="absolute right-3 top-3 rounded-full bg-black/60 p-2 text-white backdrop-blur transition hover:bg-black/80 disabled:opacity-50"
+                aria-label={t.remove}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Actions */}
+            <div className="space-y-3 p-5">
+              <button
+                type="button"
+                onClick={runAnalysis}
+                disabled={
+                  isAnalyzing ||
+                  isLoggingIn ||
+                  !firebaseUser ||
+                  !userProfile?.uid
+                }
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-4 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2
+                      size={20}
+                      className="animate-spin"
+                    />
+                    {t.analyzing}
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={20} />
+                    {t.analyze}
+                  </>
+                )}
+              </button>
 
               <button
                 type="button"
                 onClick={() =>
-                  setSelectedImage(null)
+                  mode === 'photo'
+                    ? cameraInputRef.current?.click()
+                    : uploadInputRef.current?.click()
                 }
-                className="flex-1 py-3 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 font-bold text-xs rounded-2xl transition-all"
+                disabled={isAnalyzing}
+                className={`flex w-full items-center justify-center gap-2 rounded-xl border px-5 py-3 font-semibold transition disabled:opacity-50 ${
+                  isDark
+                    ? 'border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700'
+                    : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                }`}
               >
-                Retake Photo
+                {mode === 'photo' ? (
+                  <Camera size={18} />
+                ) : (
+                  <Upload size={18} />
+                )}
+
+                {mode === 'photo'
+                  ? t.retake
+                  : t.chooseImage}
               </button>
-
-              <button
-                type="button"
-                onClick={runAnalysis}
-                disabled={analyzing}
-                className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-500 hover:brightness-110 text-white font-bold text-xs rounded-2xl shadow-lg shadow-emerald-950/50 flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-
-                <Sparkles className="w-4 h-4 text-emerald-200" />
-
-                {analyzing
-                  ? 'Analyzing...'
-                  : 'Analyze with Gemini AI'}
-
-              </button>
-
             </div>
-
           </div>
+        )}
 
-        ) : mode === 'photo' && cameraActive ? (
-
-          <button
-            type="button"
-            onClick={capturePhoto}
-            className="w-full py-3.5 bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500 text-white font-black text-sm rounded-2xl shadow-xl flex items-center justify-center gap-2 hover:brightness-110 active:scale-98 transition-all"
+        {/* Login reminder below scanner */}
+        {!firebaseUser && selectedImage && (
+          <div
+            className={`mt-4 rounded-xl p-4 text-center text-sm ${
+              isDark
+                ? 'bg-slate-900 text-slate-400'
+                : 'bg-white text-slate-600'
+            }`}
           >
-
-            <Camera className="w-5 h-5" />
-
-            Snap Food Packaging Photo
-
-          </button>
-
-        ) : null}
-
+            {t.loginMessage}
+          </div>
+        )}
       </div>
-
     </div>
   );
 };

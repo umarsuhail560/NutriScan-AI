@@ -1,6 +1,13 @@
 export type GradeType = 'A+' | 'A' | 'B' | 'C' | 'D' | 'E';
-export type RiskLevelType = 'Very Healthy' | 'Healthy' | 'Moderate' | 'Unhealthy' | 'Avoid Frequently';
-export type ScanMode = 'photo' | 'upload' | 'barcode';
+
+export type RiskLevelType =
+  | 'Very Healthy'
+  | 'Healthy'
+  | 'Moderate'
+  | 'Unhealthy'
+  | 'Avoid Frequently';
+
+export type ScanMode = 'photo' | 'upload';
 
 export interface PopulationSuitability {
   forChildren: boolean;

@@ -66,7 +66,7 @@ function cleanGeminiJson(text: string) {
 const FOOD_ANALYSIS_SYSTEM_PROMPT = `
 You are NutriScan AI, an expert food nutrition and food-label analysis assistant.
 
-Your task is to analyze food products using ONLY the information actually visible
+Your task is to analyze products using ONLY the information actually visible
 or provided in the product image / verified barcode database metadata.
 
 IMPORTANT ACCURACY RULES:
@@ -85,14 +85,53 @@ IMPORTANT ACCURACY RULES:
    verified source for product identity and nutrition values.
 10. Do not invent information that is not present in the supplied data or image.
 
+EDIBLE PRODUCT CLASSIFICATION:
+
+You MUST determine whether the scanned product is an edible food or beverage.
+
+Set "isEdible" to true ONLY when the product is intended to be consumed as
+food or beverage.
+
+Set "isEdible" to false for products such as:
+
+- Cosmetics
+- Skincare products
+- Shampoo
+- Conditioner
+- Soap
+- Detergent
+- Cleaning products
+- Household products
+- Medicines
+- Toiletries
+- Personal-care products
+- Beauty products
+- Other non-food products
+
+If the product is clearly non-edible, DO NOT perform a normal nutritional
+health assessment.
+
+For a non-edible product:
+- healthScore MUST be 0
+- grade MUST be "E"
+- riskLevel MUST be "Avoid Frequently"
+- nutrition values MUST be "Data unavailable"
+- suitability values MUST be false
+- do not invent food benefits
+- do not recommend consuming the product
+- clearly state that the product is not an edible food or beverage
+
 Return ONLY valid JSON matching this structure:
 
 {
+  "isEdible": true,
+
   "productName": "Product Name",
   "brand": "Brand Name",
-  "healthScore": 50,
-  "grade": "C",
-  "riskLevel": "Moderate",
+
+  "healthScore": 0,
+"grade": "E",
+"riskLevel": "Avoid Frequently",
 
   "calories": "Data unavailable",
   "protein": "Data unavailable",
@@ -102,7 +141,7 @@ Return ONLY valid JSON matching this structure:
   "fiber": "Data unavailable",
   "carbohydrates": "Data unavailable",
 
-  "servingSize": "100g",
+  "servingSize": "Data unavailable",
 
   "ingredients": [],
   "artificialColors": [],
@@ -113,19 +152,19 @@ Return ONLY valid JSON matching this structure:
 
   "suitability": {
     "forChildren": false,
-    "childrenNotes": "Cannot verify safety without sufficient ingredient and allergen information.",
+    "childrenNotes": "Data unavailable",
 
     "forDiabetics": false,
-    "diabeticNotes": "Sugar and carbohydrate information is unavailable.",
+    "diabeticNotes": "Data unavailable",
 
     "forPregnant": false,
-    "pregnantNotes": "Product ingredients could not be sufficiently verified.",
+    "pregnantNotes": "Data unavailable",
 
     "forElderly": false,
-    "elderlyNotes": "Nutritional and sodium information is unavailable.",
+    "elderlyNotes": "Data unavailable",
 
     "forGym": false,
-    "gymNotes": "Protein and macronutrient information is unavailable."
+    "gymNotes": "Data unavailable"
   },
 
   "goodPoints": [],
@@ -134,7 +173,7 @@ Return ONLY valid JSON matching this structure:
 
   "benefits": [],
 
-  "dailyAdvice": "Check the product packaging for complete nutrition and ingredient information before regular consumption.",
+  "dailyAdvice": "Data unavailable",
 
   "alternatives": [],
 
@@ -159,10 +198,25 @@ RISK LEVEL:
 30-44 = Unhealthy
 0-29 = Avoid Frequently
 
-When nutrition data is missing, DO NOT pretend the product is healthy or unhealthy.
-Use a conservative score around 50 only when there is genuinely insufficient data,
-and clearly state that the score is limited by missing information.
+For edible products:
 
+When nutrition data is missing, DO NOT invent a health score based on missing values.
+
+The health score must be based only on nutrition and ingredient information that
+is actually visible or verified.
+
+If there is not enough verified information to calculate a meaningful health score,
+set:
+
+healthScore = 0
+grade = "E"
+riskLevel = "Avoid Frequently"
+
+and clearly state that the health assessment could not be completed because
+verified nutrition information is unavailable.
+
+NEVER use 50 as a default score.
+NEVER use 50 merely because information is missing.
 For allergens, identify only allergens that are explicitly present or clearly stated
 in the provided information.
 
@@ -208,9 +262,17 @@ app.post('/api/analyze-image', async (req, res) => {
     );
 
     const prompt = `
-Analyze this food product image carefully.
+Analyze this product image carefully.
 
-Look for:
+FIRST determine whether this product is an edible food or beverage.
+
+Set "isEdible" to:
+- true for food and beverages intended for consumption
+- false for cosmetics, skincare, shampoo, soap, detergent, medicine,
+  household products, toiletries, personal-care products, beauty products,
+  or any other non-food product.
+
+For an edible food/beverage, look for:
 
 - Product name
 - Brand
@@ -230,6 +292,16 @@ Look for:
 - Salt
 - Fibre
 - Carbohydrates
+
+For a non-edible product:
+
+- Set "isEdible" to false.
+- Set healthScore to 0.
+- Set grade to "E".
+- Set riskLevel to "Avoid Frequently".
+- Do not invent nutritional information.
+- Nutrition fields must say "Data unavailable".
+- Do not provide food benefits or consumption recommendations.
 
 IMPORTANT:
 
@@ -285,6 +357,56 @@ ${userPrompt ? `Additional user information: ${userPrompt}` : ''}
       throw new Error(
         'AI returned invalid JSON. Please try scanning the product again.'
       );
+    }
+
+    /* =====================================================
+       SERVER-SIDE NON-EDIBLE ENFORCEMENT
+    ===================================================== */
+
+    if (data.isEdible === false) {
+      data.healthScore = 0;
+      data.grade = 'E';
+      data.riskLevel = 'Avoid Frequently';
+
+      data.calories = 'Data unavailable';
+      data.protein = 'Data unavailable';
+      data.fat = 'Data unavailable';
+      data.sugar = 'Data unavailable';
+      data.salt = 'Data unavailable';
+      data.fiber = 'Data unavailable';
+      data.carbohydrates = 'Data unavailable';
+      data.servingSize = 'Data unavailable';
+
+      data.suitability = {
+        forChildren: false,
+        childrenNotes: 'This is not an edible food or beverage.',
+
+        forDiabetics: false,
+        diabeticNotes: 'This is not an edible food or beverage.',
+
+        forPregnant: false,
+        pregnantNotes: 'This is not an edible food or beverage.',
+
+        forElderly: false,
+        elderlyNotes: 'This is not an edible food or beverage.',
+
+        forGym: false,
+        gymNotes: 'This is not an edible food or beverage.',
+      };
+
+      data.goodPoints = [];
+      data.benefits = [];
+      data.alternatives = [];
+
+      data.warnings = [
+        'This product is not an edible food or beverage.'
+      ];
+
+      data.dailyAdvice =
+        'Do not treat this product as food.';
+
+      data.summary =
+        'This product is not an edible food or beverage, so it is not suitable for nutritional assessment.';
     }
 
     return res.json({
@@ -669,6 +791,7 @@ Do NOT invent information that is marked "Data unavailable".
 
 Use the supplied information to determine:
 
+- Whether the product is an edible food or beverage
 - Health score
 - Grade
 - Risk level
