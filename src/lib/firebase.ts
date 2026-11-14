@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import config from '../../firebase-applet-config.json';
 
@@ -16,14 +16,10 @@ const firebaseConfig = {
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-export const db = config.firestoreDatabaseId 
+export const db = config.firestoreDatabaseId
   ? getFirestore(app, config.firestoreDatabaseId)
   : getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
-
-googleProvider.setCustomParameters({
-  prompt: "select_account",
-});
 
 export enum OperationType {
   CREATE = 'create',
@@ -72,15 +68,17 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Test connectivity
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firebase Firestore client appears offline.');
+// Test connectivity only when authenticated against user's own doc so we never trigger unauthenticated permission-denied console errors
+let connectionTested = false;
+onAuthStateChanged(auth, async (user) => {
+  if (user && !connectionTested) {
+    connectionTested = true;
+    try {
+      await getDocFromServer(doc(db, 'users', user.uid));
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('the client is offline')) {
+        console.warn('Firebase Firestore client appears offline.');
+      }
     }
   }
-}
-testConnection();
-
+});

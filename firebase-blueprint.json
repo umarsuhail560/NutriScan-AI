@@ -5,14 +5,14 @@
       "description": "User profile settings and stats",
       "type": "object",
       "properties": {
-        "uid": { "type": "string" },
-        "displayName": { "type": "string" },
-        "email": { "type": "string" },
-        "photoURL": { "type": "string" },
+        "uid": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 120 },
+        "email": { "type": "string", "maxLength": 200 },
+        "photoURL": { "type": "string", "maxLength": 1000 },
         "totalScans": { "type": "number" },
         "healthyScansCount": { "type": "number" },
         "unhealthyScansCount": { "type": "number" },
-        "createdAt": { "type": "string" }
+        "createdAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["uid"]
     },
@@ -21,15 +21,33 @@
       "description": "Nutritional scan history for food products",
       "type": "object",
       "properties": {
-        "userId": { "type": "string" },
-        "productName": { "type": "string" },
-        "brand": { "type": "string" },
+        "userId": { "type": "string", "maxLength": 128 },
+        "productName": { "type": "string", "maxLength": 300 },
+        "brand": { "type": "string", "maxLength": 200 },
         "healthScore": { "type": "number" },
-        "grade": { "type": "string" },
+        "grade": { "type": "string", "maxLength": 8 },
         "isFavorite": { "type": "boolean" },
-        "createdAt": { "type": "string" }
+        "createdAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["userId", "productName", "healthScore"]
+    },
+    "feedback": {
+      "title": "User Feedback",
+      "description": "Private user feedback messages readable only by sender and admin, with admin-only replies",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "senderUid": { "type": "string", "maxLength": 128 },
+        "senderName": { "type": "string", "maxLength": 120 },
+        "senderEmail": { "type": "string", "maxLength": 200 },
+        "senderType": { "type": "string", "enum": ["google", "email", "guest"] },
+        "message": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["pending", "replied"] },
+        "adminReply": { "type": "string", "maxLength": 2000 },
+        "repliedAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "senderUid", "senderName", "senderEmail", "senderType", "message", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -40,6 +58,10 @@
     "/scans/{scanId}": {
       "schema": "#/entities/scans",
       "description": "Nutritional scan documents"
+    },
+    "/feedback/{feedbackId}": {
+      "schema": "#/entities/feedback",
+      "description": "Private feedback messages and admin replies"
     }
   }
 }

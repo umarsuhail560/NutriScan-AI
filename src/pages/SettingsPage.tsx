@@ -1,5 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { usePWAInstall } from '../context/PWAContext';
+import { AI_VOICES, useSpeech } from '../context/SpeechContext';
+import {
+  fetchMyFeedback,
+  getEffectiveSenderIdentity,
+  submitUserFeedback,
+} from '../services/feedbackService';
+import { FeedbackItem } from '../types';
+import { DIETARY_KEYS, LANGUAGE_META, SupportedLanguage, translateDietaryOption } from '../i18n/translations';
 import {
   Settings,
   Sun,
@@ -12,858 +22,524 @@ import {
   Heart,
   ChevronRight,
   Send,
+  Volume2,
+  Square,
   Smartphone,
   Download,
-  User,
+  GraduationCap,
+  Cpu,
+  UserCheck,
+  Loader2,
+  X,
 } from 'lucide-react';
 
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{
-    outcome: 'accepted' | 'dismissed';
-    platform: string;
-  }>;
-}
-
-const labels = {
-  English: {
-    preferences: 'Preferences',
-    appearance: 'Appearance',
-    themeMode: 'Theme Mode',
-    darkMode: 'Dark Mode',
-    lightMode: 'Light Mode',
-    toggleTheme: 'Toggle Theme',
-    language: 'Language',
-    dietaryPreferences: 'Dietary Preferences',
-    selectedPreferences: 'Select preferences that should be considered during food analysis.',
-    aboutLegal: 'About & Legal',
-    sendFeedback: 'Send Feedback',
-    privacy: 'Privacy',
-    privacyText:
-      'NutriScan AI stores scan history securely in Firebase Firestore. Your images are analyzed server-side and are not used for data monetization.',
-    about: 'About',
-    aboutText:
-      'NutriScan AI uses Google Gemini AI for food and product analysis and Open Food Facts for product information.',
-    feedbackTitle: 'Send Feedback',
-    feedbackPlaceholder: 'Tell us what you think...',
-    cancel: 'Cancel',
-    submit: 'Submit',
-    thankYou:
-      'Thank you for your feedback! NutriScan AI is constantly improving.',
-    installApp: 'Add to Home Screen',
-    installDescription:
-      'Install NutriScan AI on your device for quick access.',
-    install: 'Install',
-    creator: 'Creator',
-    createdBy: 'Created by',
-    project: 'AI & Data Science Engineering Project',
-    creatorInfo: 'NutriScan AI was created as an engineering project focused on AI-powered food analysis.',
-    unavailableInstall:
-      'Installation is not currently available in this browser.',
-  },
-
-  Spanish: {
-    preferences: 'Preferencias',
-    appearance: 'Apariencia',
-    themeMode: 'Modo de tema',
-    darkMode: 'Modo oscuro',
-    lightMode: 'Modo claro',
-    toggleTheme: 'Cambiar tema',
-    language: 'Idioma',
-    dietaryPreferences: 'Preferencias dietéticas',
-    selectedPreferences:
-      'Selecciona las preferencias que deben considerarse durante el análisis de alimentos.',
-    aboutLegal: 'Acerca de y legal',
-    sendFeedback: 'Enviar comentarios',
-    privacy: 'Privacidad',
-    privacyText:
-      'NutriScan AI almacena el historial de análisis de forma segura en Firebase Firestore. Las imágenes se analizan en el servidor y no se utilizan para monetización de datos.',
-    about: 'Acerca de',
-    aboutText:
-      'NutriScan AI utiliza Google Gemini AI para analizar alimentos y productos y Open Food Facts para información de productos.',
-    feedbackTitle: 'Enviar comentarios',
-    feedbackPlaceholder: 'Cuéntanos qué piensas...',
-    cancel: 'Cancelar',
-    submit: 'Enviar',
-    thankYou:
-      '¡Gracias por tus comentarios! NutriScan AI sigue mejorando.',
-    installApp: 'Añadir a la pantalla de inicio',
-    installDescription:
-      'Instala NutriScan AI en tu dispositivo para acceder rápidamente.',
-    install: 'Instalar',
-    creator: 'Creador',
-    createdBy: 'Creado por',
-    project: 'Proyecto de Ingeniería de IA y Ciencia de Datos',
-    creatorInfo:
-      'NutriScan AI fue creado como un proyecto de ingeniería centrado en el análisis de alimentos mediante IA.',
-    unavailableInstall:
-      'La instalación no está disponible actualmente en este navegador.',
-  },
-
-  French: {
-    preferences: 'Préférences',
-    appearance: 'Apparence',
-    themeMode: 'Mode du thème',
-    darkMode: 'Mode sombre',
-    lightMode: 'Mode clair',
-    toggleTheme: 'Changer de thème',
-    language: 'Langue',
-    dietaryPreferences: 'Préférences alimentaires',
-    selectedPreferences:
-      'Sélectionnez les préférences à prendre en compte lors de l’analyse des aliments.',
-    aboutLegal: 'À propos et mentions légales',
-    sendFeedback: 'Envoyer un commentaire',
-    privacy: 'Confidentialité',
-    privacyText:
-      'NutriScan AI stocke l’historique des analyses de manière sécurisée dans Firebase Firestore. Les images sont analysées côté serveur et ne sont pas utilisées à des fins de monétisation des données.',
-    about: 'À propos',
-    aboutText:
-      'NutriScan AI utilise Google Gemini AI pour analyser les aliments et les produits et Open Food Facts pour les informations sur les produits.',
-    feedbackTitle: 'Envoyer un commentaire',
-    feedbackPlaceholder: 'Dites-nous ce que vous pensez...',
-    cancel: 'Annuler',
-    submit: 'Envoyer',
-    thankYou:
-      'Merci pour vos commentaires ! NutriScan AI continue de s’améliorer.',
-    installApp: 'Ajouter à l’écran d’accueil',
-    installDescription:
-      'Installez NutriScan AI sur votre appareil pour un accès rapide.',
-    install: 'Installer',
-    creator: 'Créateur',
-    createdBy: 'Créé par',
-    project: 'Projet d’ingénierie IA et science des données',
-    creatorInfo:
-      'NutriScan AI a été créé comme un projet d’ingénierie axé sur l’analyse des aliments par IA.',
-    unavailableInstall:
-      'L’installation n’est pas disponible dans ce navigateur.',
-  },
-
-  German: {
-    preferences: 'Einstellungen',
-    appearance: 'Darstellung',
-    themeMode: 'Designmodus',
-    darkMode: 'Dunkelmodus',
-    lightMode: 'Hellmodus',
-    toggleTheme: 'Design wechseln',
-    language: 'Sprache',
-    dietaryPreferences: 'Ernährungseinstellungen',
-    selectedPreferences:
-      'Wählen Sie Einstellungen aus, die bei der Lebensmittelanalyse berücksichtigt werden sollen.',
-    aboutLegal: 'Über & Rechtliches',
-    sendFeedback: 'Feedback senden',
-    privacy: 'Datenschutz',
-    privacyText:
-      'NutriScan AI speichert den Scanverlauf sicher in Firebase Firestore. Bilder werden serverseitig analysiert und nicht zur Datenmonetarisierung verwendet.',
-    about: 'Über',
-    aboutText:
-      'NutriScan AI verwendet Google Gemini AI für die Analyse von Lebensmitteln und Produkten sowie Open Food Facts für Produktinformationen.',
-    feedbackTitle: 'Feedback senden',
-    feedbackPlaceholder: 'Teilen Sie uns Ihre Meinung mit...',
-    cancel: 'Abbrechen',
-    submit: 'Senden',
-    thankYou:
-      'Vielen Dank für Ihr Feedback! NutriScan AI wird ständig verbessert.',
-    installApp: 'Zum Startbildschirm hinzufügen',
-    installDescription:
-      'Installieren Sie NutriScan AI auf Ihrem Gerät für schnellen Zugriff.',
-    install: 'Installieren',
-    creator: 'Ersteller',
-    createdBy: 'Erstellt von',
-    project: 'KI- und Data-Science-Engineering-Projekt',
-    creatorInfo:
-      'NutriScan AI wurde als Engineering-Projekt zur KI-gestützten Lebensmittelanalyse entwickelt.',
-    unavailableInstall:
-      'Die Installation ist in diesem Browser derzeit nicht verfügbar.',
-  },
-
-  Hindi: {
-    preferences: 'प्राथमिकताएं',
-    appearance: 'दिखावट',
-    themeMode: 'थीम मोड',
-    darkMode: 'डार्क मोड',
-    lightMode: 'लाइट मोड',
-    toggleTheme: 'थीम बदलें',
-    language: 'भाषा',
-    dietaryPreferences: 'आहार प्राथमिकताएं',
-    selectedPreferences:
-      'खाद्य विश्लेषण के दौरान ध्यान में रखी जाने वाली प्राथमिकताएं चुनें।',
-    aboutLegal: 'जानकारी और कानूनी',
-    sendFeedback: 'फीडबैक भेजें',
-    privacy: 'गोपनीयता',
-    privacyText:
-      'NutriScan AI स्कैन इतिहास को Firebase Firestore में सुरक्षित रूप से संग्रहीत करता है। छवियों का सर्वर पर विश्लेषण किया जाता है और डेटा से कमाई के लिए उनका उपयोग नहीं किया जाता।',
-    about: 'जानकारी',
-    aboutText:
-      'NutriScan AI खाद्य और उत्पाद विश्लेषण के लिए Google Gemini AI और उत्पाद जानकारी के लिए Open Food Facts का उपयोग करता है।',
-    feedbackTitle: 'फीडबैक भेजें',
-    feedbackPlaceholder: 'अपनी राय बताएं...',
-    cancel: 'रद्द करें',
-    submit: 'भेजें',
-    thankYou:
-      'फीडबैक के लिए धन्यवाद! NutriScan AI लगातार बेहतर हो रहा है।',
-    installApp: 'होम स्क्रीन पर जोड़ें',
-    installDescription:
-      'त्वरित पहुंच के लिए अपने डिवाइस पर NutriScan AI इंस्टॉल करें।',
-    install: 'इंस्टॉल करें',
-    creator: 'निर्माता',
-    createdBy: 'द्वारा बनाया गया',
-    project: 'AI और Data Science Engineering Project',
-    creatorInfo:
-      'NutriScan AI को AI आधारित खाद्य विश्लेषण पर केंद्रित इंजीनियरिंग प्रोजेक्ट के रूप में बनाया गया है।',
-    unavailableInstall:
-      'इस ब्राउज़र में अभी इंस्टॉलेशन उपलब्ध नहीं है।',
-  },
-
-  Arabic: {
-    preferences: 'التفضيلات',
-    appearance: 'المظهر',
-    themeMode: 'وضع المظهر',
-    darkMode: 'الوضع الداكن',
-    lightMode: 'الوضع الفاتح',
-    toggleTheme: 'تغيير المظهر',
-    language: 'اللغة',
-    dietaryPreferences: 'التفضيلات الغذائية',
-    selectedPreferences:
-      'اختر التفضيلات التي يجب مراعاتها أثناء تحليل الطعام.',
-    aboutLegal: 'حول ومعلومات قانونية',
-    sendFeedback: 'إرسال ملاحظات',
-    privacy: 'الخصوصية',
-    privacyText:
-      'يخزن NutriScan AI سجل عمليات التحليل بأمان في Firebase Firestore. يتم تحليل الصور على الخادم ولا يتم استخدامها لتحقيق الدخل من البيانات.',
-    about: 'حول',
-    aboutText:
-      'يستخدم NutriScan AI تقنية Google Gemini AI لتحليل الأطعمة والمنتجات وOpen Food Facts لمعلومات المنتجات.',
-    feedbackTitle: 'إرسال ملاحظات',
-    feedbackPlaceholder: 'أخبرنا برأيك...',
-    cancel: 'إلغاء',
-    submit: 'إرسال',
-    thankYou:
-      'شكرًا لملاحظاتك! يعمل NutriScan AI باستمرار على التحسين.',
-    installApp: 'إضافة إلى الشاشة الرئيسية',
-    installDescription:
-      'ثبّت NutriScan AI على جهازك للوصول السريع.',
-    install: 'تثبيت',
-    creator: 'المطور',
-    createdBy: 'تم إنشاؤه بواسطة',
-    project: 'مشروع هندسة الذكاء الاصطناعي وعلوم البيانات',
-    creatorInfo:
-      'تم إنشاء NutriScan AI كمشروع هندسي يركز على تحليل الطعام باستخدام الذكاء الاصطناعي.',
-    unavailableInstall:
-      'التثبيت غير متاح حاليًا في هذا المتصفح.',
-  },
-} as const;
-
 export const SettingsPage: React.FC = () => {
-  const { theme, toggleTheme, language, setLanguage } = useTheme();
+  const { userProfile, isGuest, isLocalEmailAuth } = useAuth();
+  const { theme, toggleTheme, language, setLanguage, t } = useTheme();
+  const { isInstallable, isInstalled, isIOS, installApp } = usePWAInstall();
+  const {
+    selectedVoiceId,
+    setSelectedVoiceId,
+    speechRate,
+    setSpeechRate,
+    deviceVoices,
+    isSpeaking,
+    isLoadingAudio,
+    speak,
+    stop,
+  } = useSpeech();
 
   const [dietary, setDietary] = useState<string[]>(() => {
     const saved = localStorage.getItem('nutriscan_dietary');
-
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return ['Diabetic-Friendly', 'Low-Sodium'];
-      }
-    }
-
-    return ['Diabetic-Friendly', 'Low-Sodium'];
+    return saved ? JSON.parse(saved) : ['Diabetic-Friendly', 'Low-Sodium'];
   });
 
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [myFeedback, setMyFeedback] = useState<FeedbackItem[]>([]);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
 
-  const [deferredPrompt, setDeferredPrompt] =
-    useState<BeforeInstallPromptEvent | null>(null);
+  const senderIdentity = getEffectiveSenderIdentity(userProfile, isGuest, isLocalEmailAuth);
 
-  const [installAvailable, setInstallAvailable] = useState(false);
-
-  const languages = [
-    'English',
-    'Spanish',
-    'French',
-    'German',
-    'Hindi',
-    'Arabic',
-  ] as const;
-
-  const dietaryOptions = [
-    'Diabetic-Friendly',
-    'Vegan',
-    'Gluten-Free',
-    'Nut-Free',
-    'Low-Sodium',
-    'Pregnancy-Safe',
-    'Keto-Friendly',
-  ];
-
-  const isDark = theme === 'dark';
-  const text = labels[language];
-
-  React.useEffect(() => {
-    const handleBeforeInstallPrompt = (event: Event) => {
-      const installEvent = event as BeforeInstallPromptEvent;
-
-      installEvent.preventDefault();
-
-      setDeferredPrompt(installEvent);
-      setInstallAvailable(true);
-    };
-
-    window.addEventListener(
-      'beforeinstallprompt',
-      handleBeforeInstallPrompt
-    );
-
+  useEffect(() => {
+    let active = true;
+    fetchMyFeedback(senderIdentity.senderUid)
+      .then((items) => {
+        if (active) setMyFeedback(items);
+      })
+      .catch(() => {});
     return () => {
-      window.removeEventListener(
-        'beforeinstallprompt',
-        handleBeforeInstallPrompt
-      );
+      active = false;
     };
-  }, []);
+  }, [senderIdentity.senderUid]);
 
   const toggleDietary = (item: string) => {
     const updated = dietary.includes(item)
       ? dietary.filter((d) => d !== item)
       : [...dietary, item];
-
     setDietary(updated);
-
-    localStorage.setItem(
-      'nutriscan_dietary',
-      JSON.stringify(updated)
-    );
+    localStorage.setItem('nutriscan_dietary', JSON.stringify(updated));
   };
 
-  const handleInstall = async () => {
-    if (!deferredPrompt) {
-      return;
-    }
+  const languages: SupportedLanguage[] = ['English', 'Spanish', 'French', 'German', 'Hindi', 'Arabic'];
 
-    try {
-      await deferredPrompt.prompt();
-
-      const { outcome } = await deferredPrompt.userChoice;
-
-      if (outcome === 'accepted') {
-        setInstallAvailable(false);
-      }
-    } catch (error) {
-      console.error('PWA installation failed:', error);
-    } finally {
-      setDeferredPrompt(null);
-    }
-  };
-
-  const handleSendFeedback = (e: React.FormEvent) => {
+  const handleSendFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    setFeedbackSent(true);
-
-    setTimeout(() => {
-      setFeedbackSent(false);
-      setShowFeedbackModal(false);
-      setFeedbackText('');
-    }, 2000);
+    if (!feedbackText.trim() || submittingFeedback) return;
+    setSubmittingFeedback(true);
+    setFeedbackError(null);
+    try {
+      const saved = await submitUserFeedback({
+        ...senderIdentity,
+        message: feedbackText.trim(),
+      });
+      setMyFeedback((prev) => [saved, ...prev]);
+      setFeedbackSent(true);
+      setTimeout(() => {
+        setFeedbackSent(false);
+        setShowFeedbackModal(false);
+        setFeedbackText('');
+      }, 1500);
+    } catch (err: any) {
+      setFeedbackError(err?.message || 'Failed to submit feedback');
+    } finally {
+      setSubmittingFeedback(false);
+    }
   };
 
-  const translatedDietaryOption = (option: string) => {
-    const translations: Record<
-      string,
-      Record<string, string>
-    > = {
-      'Diabetic-Friendly': {
-        English: 'Diabetic-Friendly',
-        Spanish: 'Apto para diabéticos',
-        French: 'Adapté aux diabétiques',
-        German: 'Diabetesfreundlich',
-        Hindi: 'मधुमेह के अनुकूल',
-        Arabic: 'مناسب لمرضى السكري',
-      },
-      Vegan: {
-        English: 'Vegan',
-        Spanish: 'Vegano',
-        French: 'Végétalien',
-        German: 'Vegan',
-        Hindi: 'शाकाहारी',
-        Arabic: 'نباتي',
-      },
-      'Gluten-Free': {
-        English: 'Gluten-Free',
-        Spanish: 'Sin gluten',
-        French: 'Sans gluten',
-        German: 'Glutenfrei',
-        Hindi: 'ग्लूटेन मुक्त',
-        Arabic: 'خالٍ من الغلوتين',
-      },
-      'Nut-Free': {
-        English: 'Nut-Free',
-        Spanish: 'Sin frutos secos',
-        French: 'Sans fruits à coque',
-        German: 'Nussfrei',
-        Hindi: 'नट-मुक्त',
-        Arabic: 'خالٍ من المكسرات',
-      },
-      'Low-Sodium': {
-        English: 'Low-Sodium',
-        Spanish: 'Bajo en sodio',
-        French: 'Faible en sodium',
-        German: 'Natriumarm',
-        Hindi: 'कम सोडियम',
-        Arabic: 'منخفض الصوديوم',
-      },
-      'Pregnancy-Safe': {
-        English: 'Pregnancy-Safe',
-        Spanish: 'Seguro durante el embarazo',
-        French: 'Adapté à la grossesse',
-        German: 'Schwangerschaftsgeeignet',
-        Hindi: 'गर्भावस्था के लिए सुरक्षित',
-        Arabic: 'آمن للحمل',
-      },
-      'Keto-Friendly': {
-        English: 'Keto-Friendly',
-        Spanish: 'Apto para dieta keto',
-        French: 'Compatible avec le régime keto',
-        German: 'Keto-freundlich',
-        Hindi: 'कीटो के अनुकूल',
-        Arabic: 'مناسب للكيتو',
-      },
-    };
-
-    return translations[option]?.[language] ?? option;
+  const handleAddToHomeScreen = async () => {
+    if (isInstalled) return;
+    if (isInstallable) {
+      const ok = await installApp();
+      if (!ok) {
+        setShowInstallGuide(true);
+      }
+    } else {
+      setShowInstallGuide(true);
+    }
   };
+
+  const speedOptions = [
+    { value: 0.8, label: t.speedSlow },
+    { value: 1.0, label: t.speedNormal },
+    { value: 1.15, label: t.speedFast },
+  ];
 
   return (
-    <div
-      className={`min-h-screen pb-28 transition-colors duration-300 ${
-        isDark
-          ? 'bg-slate-950 text-slate-100'
-          : 'bg-slate-100 text-slate-900'
-      }`}
-    >
-      {/* HEADER */}
-      <div
-        className={`p-4 border-b sticky top-0 z-30 backdrop-blur-md transition-colors duration-300 ${
-          isDark
-            ? 'border-slate-800 bg-slate-900/90'
-            : 'border-slate-200 bg-white/90'
-        }`}
-      >
-        <div className="max-w-md mx-auto flex items-center gap-2">
-          <div
-            className={`p-2 rounded-xl ${
-              isDark
-                ? 'bg-emerald-500/10 text-emerald-400'
-                : 'bg-emerald-100 text-emerald-600'
-            }`}
-          >
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-28 md:pb-10 transition-colors">
+      {/* Top Header */}
+      <div className="border-b border-slate-200 dark:border-slate-800 bg-white/85 dark:bg-slate-900/80 sticky top-16 z-30 backdrop-blur-md py-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-2">
+          <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
             <Settings className="w-5 h-5" />
           </div>
-
-          <h2
-            className={`text-base font-bold font-['Outfit'] ${
-              isDark ? 'text-white' : 'text-slate-900'
-            }`}
-          >
-            {text.preferences}
-          </h2>
+          <h2 className="text-base font-bold font-['Outfit']">{t.preferencesSettings}</h2>
         </div>
       </div>
 
-      <div className="max-w-md mx-auto p-4 space-y-6">
-        {/* APPEARANCE */}
-        <div
-          className={`p-4 rounded-3xl border space-y-3 ${
-            isDark
-              ? 'bg-slate-900 border-slate-800/80'
-              : 'bg-white border-slate-200 shadow-sm'
-          }`}
-        >
-          <h3
-            className={`text-xs font-bold uppercase tracking-wider ${
-              isDark ? 'text-slate-400' : 'text-slate-500'
-            }`}
-          >
-            {text.appearance}
-          </h3>
-
-          <div
-            className={`flex items-center justify-between p-2.5 rounded-2xl border ${
-              isDark
-                ? 'bg-slate-950 border-slate-800'
-                : 'bg-slate-50 border-slate-200'
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              {isDark ? (
-                <Moon className="w-4 h-4 text-indigo-400" />
-              ) : (
-                <Sun className="w-4 h-4 text-amber-500" />
-              )}
-
-              <div>
-                <span
-                  className={`text-xs font-bold block ${
-                    isDark ? 'text-white' : 'text-slate-900'
-                  }`}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Left Column: Appearance, Language, Dietary & Add to Home Screen */}
+          <div className="lg:col-span-6 space-y-6">
+            {/* Appearance & Theme */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 shadow-sm space-y-3">
+              <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{t.appearance}</h3>
+              <div className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  {theme === 'dark' ? (
+                    <Moon className="w-4 h-4 text-indigo-400" />
+                  ) : (
+                    <Sun className="w-4 h-4 text-amber-500" />
+                  )}
+                  <div>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white block">{t.themeMode}</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      {theme === 'dark' ? t.darkMode : t.lightMode}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={toggleTheme}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-colors"
                 >
-                  {text.themeMode}
-                </span>
-
-                <span
-                  className={`text-[10px] ${
-                    isDark ? 'text-slate-400' : 'text-slate-500'
-                  }`}
-                >
-                  {isDark ? text.darkMode : text.lightMode}
-                </span>
+                  {t.toggleTheme}
+                </button>
               </div>
             </div>
 
-            <button
-              onClick={toggleTheme}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all"
-            >
-              {text.toggleTheme}
-            </button>
+            {/* Language Selection */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 shadow-sm space-y-3">
+              <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Globe className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> {t.languageLabel}
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-2">
+                {languages.map((lang) => (
+                  <button
+                    key={lang}
+                    onClick={() => setLanguage(lang)}
+                    className={`p-2.5 rounded-2xl border text-xs font-semibold text-left flex items-center justify-between transition-all ${
+                      language === lang
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                    }`}
+                  >
+                    <span>{LANGUAGE_META[lang].nativeName}</span>
+                    {language === lang && <Check className="w-4 h-4" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Dietary Profile Filters */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 shadow-sm space-y-3">
+              <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Heart className="w-4 h-4 text-rose-500 dark:text-rose-400" /> {t.dietaryPreferences}
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                {t.dietaryDesc}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {DIETARY_KEYS.map((opt) => {
+                  const active = dietary.includes(opt);
+                  return (
+                    <button
+                      key={opt}
+                      onClick={() => toggleDietary(opt)}
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                        active
+                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/40'
+                          : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      {active && <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
+                      <span>{translateDietaryOption(opt, t)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Add to Home Screen (PWA Install) */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 shadow-sm space-y-3">
+              <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Smartphone className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> {t.addToHomeScreen}
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                {t.addToHomeScreenDesc}
+              </p>
+              {isInstalled ? (
+                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                  <Check className="w-4 h-4" />
+                  <span>{t.alreadyInstalled}</span>
+                </div>
+              ) : (
+                <button
+                  onClick={handleAddToHomeScreen}
+                  className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:brightness-110 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>{t.addToHomeScreen}</span>
+                </button>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* LANGUAGE */}
-        <div
-          className={`p-4 rounded-3xl border space-y-3 ${
-            isDark
-              ? 'bg-slate-900 border-slate-800/80'
-              : 'bg-white border-slate-200 shadow-sm'
-          }`}
-        >
-          <h3
-            className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
-              isDark ? 'text-slate-400' : 'text-slate-500'
-            }`}
-          >
-            <Globe className="w-4 h-4 text-emerald-400" />
-            {text.language}
-          </h3>
+          {/* Right Column: Voice Accessibility, Creator Credit & About/Legal */}
+          <div className="lg:col-span-6 space-y-6">
+            {/* Voice & Reading Assistant (Accessibility for Older Adults) */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 shadow-sm space-y-3">
+              <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Volume2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> {t.voiceAccessibility}
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                {t.voiceAccessibilityDesc}
+              </p>
 
-          <div className="grid grid-cols-2 gap-2">
-            {languages.map((lang) => (
+              {/* Voice Selector Dropdown */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
+                  {t.selectVoice}
+                </label>
+                <select
+                  value={selectedVoiceId}
+                  onChange={(e) => setSelectedVoiceId(e.target.value)}
+                  className="w-full p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <optgroup label={t.aiVoicesGroup}>
+                    {AI_VOICES.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {deviceVoices.length > 0 && (
+                    <optgroup label={t.deviceVoicesGroup}>
+                      {deviceVoices.map((dv) => (
+                        <option key={dv.voiceURI} value={`browser:${dv.voiceURI}`}>
+                          {dv.name} ({dv.lang})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+
+              {/* Reading Speed */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
+                  {t.readingSpeed}
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {speedOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setSpeechRate(opt.value)}
+                      className={`py-2 px-2 rounded-xl border text-[11px] font-bold transition-all ${
+                        speechRate === opt.value
+                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                          : 'bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Test Voice Button */}
               <button
-                key={lang}
-                onClick={() => setLanguage(lang)}
-                className={`p-2.5 rounded-2xl border text-xs font-semibold text-left flex items-center justify-between transition-all ${
-                  language === lang
-                    ? 'bg-emerald-600 text-white border-emerald-500'
-                    : isDark
-                    ? 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
-                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300'
+                onClick={() => {
+                  if (isSpeaking || isLoadingAudio) {
+                    stop();
+                  } else {
+                    void speak(t.sampleTestSentence, language);
+                  }
+                }}
+                className={`w-full py-2.5 px-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all border ${
+                  isSpeaking || isLoadingAudio
+                    ? 'bg-rose-600 text-white border-rose-500'
+                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-white border-slate-200 dark:border-slate-700'
                 }`}
               >
-                <span>{lang}</span>
-
-                {language === lang && (
-                  <Check className="w-4 h-4" />
+                {isLoadingAudio ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>{t.readingResult}</span>
+                  </>
+                ) : isSpeaking ? (
+                  <>
+                    <Square className="w-3.5 h-3.5 fill-white" />
+                    <span>{t.stopReading}</span>
+                  </>
+                ) : (
+                  <>
+                    <Volume2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>{t.testVoice}</span>
+                  </>
                 )}
               </button>
-            ))}
-          </div>
-        </div>
+            </div>
 
-        {/* DIETARY */}
-        <div
-          className={`p-4 rounded-3xl border space-y-3 ${
-            isDark
-              ? 'bg-slate-900 border-slate-800/80'
-              : 'bg-white border-slate-200 shadow-sm'
-          }`}
-        >
-          <h3
-            className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
-              isDark ? 'text-slate-400' : 'text-slate-500'
-            }`}
-          >
-            <Heart className="w-4 h-4 text-rose-400" />
-            {text.dietaryPreferences}
-          </h3>
+            {/* Creator & Developer Credit Card */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-slate-900 border border-emerald-200 dark:border-emerald-500/30 shadow-sm space-y-3">
+              <h3 className="text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                <UserCheck className="w-4 h-4" /> {t.creatorTitle}
+              </h3>
 
-          <p
-            className={`text-[11px] ${
-              isDark ? 'text-slate-400' : 'text-slate-500'
-            }`}
-          >
-            {text.selectedPreferences}
-          </p>
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-500 text-white font-extrabold font-['Outfit'] text-base flex items-center justify-center shadow-md flex-shrink-0">
+                  US
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                    {t.creatorByLabel}
+                  </span>
+                  <h4 className="text-sm font-extrabold font-['Outfit'] text-slate-900 dark:text-white">
+                    {t.creatorName}
+                  </h4>
+                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                    <GraduationCap className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>{t.creatorRole}</span>
+                  </p>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                    <Cpu className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 flex-shrink-0" />
+                    <span>{t.creatorDept}</span>
+                  </p>
+                </div>
+              </div>
+            </div>
 
-          <div className="flex flex-wrap gap-2">
-            {dietaryOptions.map((opt) => {
-              const active = dietary.includes(opt);
+            {/* Support & Legal */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 shadow-sm space-y-2.5">
+              <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t.aboutLegal}</h3>
 
-              return (
-                <button
-                  key={opt}
-                  onClick={() => toggleDietary(opt)}
-                  className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                    active
-                      ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/40'
-                      : isDark
-                      ? 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
-                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:text-slate-900'
-                  }`}
-                >
-                  {active && (
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+              <button
+                onClick={() => setShowFeedbackModal(true)}
+                className="w-full p-2.5 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs font-semibold text-slate-800 dark:text-slate-200 transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-teal-600 dark:text-teal-400" /> {t.sendFeedback}
+                </span>
+                <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+              </button>
+
+              {/* My Private Feedback & Admin Replies Inbox */}
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    {t.myFeedbackTitle}
+                  </span>
+                  {myFeedback.filter((f) => f.status === 'replied').length > 0 && (
+                    <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                      {myFeedback.filter((f) => f.status === 'replied').length} {t.adminRepliedBadge}
+                    </span>
                   )}
+                </div>
 
-                  <span>{translatedDietaryOption(opt)}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+                {myFeedback.length === 0 ? (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    {t.myFeedbackEmpty}
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {myFeedback.map((fb) => (
+                      <div
+                        key={fb.id}
+                        className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5 text-xs"
+                      >
+                        <div className="flex items-center justify-between gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+                          <span>{new Date(fb.createdAt).toLocaleDateString()}</span>
+                          <span
+                            className={`font-bold ${
+                              fb.status === 'replied'
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : 'text-amber-600 dark:text-amber-400'
+                            }`}
+                          >
+                            {fb.status === 'replied' ? t.adminRepliedBadge : t.adminPendingBadge}
+                          </span>
+                        </div>
+                        <p className="text-slate-800 dark:text-slate-200 leading-relaxed">{fb.message}</p>
 
-        {/* PWA INSTALL */}
-        <div
-          className={`p-4 rounded-3xl border space-y-3 ${
-            isDark
-              ? 'bg-slate-900 border-slate-800/80'
-              : 'bg-white border-slate-200 shadow-sm'
-          }`}
-        >
-          <h3
-            className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
-              isDark ? 'text-slate-400' : 'text-slate-500'
-            }`}
-          >
-            <Smartphone className="w-4 h-4 text-emerald-400" />
-            {text.installApp}
-          </h3>
+                        {fb.adminReply ? (
+                          <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-500/30 space-y-0.5">
+                            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 block">
+                              {t.adminReplyFromLabel}
+                            </span>
+                            <p className="text-slate-800 dark:text-slate-200 leading-relaxed">{fb.adminReply}</p>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-slate-400 italic">{t.waitingAdminReply}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-          <p
-            className={`text-[11px] leading-relaxed ${
-              isDark ? 'text-slate-400' : 'text-slate-500'
-            }`}
-          >
-            {text.installDescription}
-          </p>
+              <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-1">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
+                  <Shield className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> {t.privacyEncryption}
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  {t.privacyDesc}
+                </p>
+              </div>
 
-          {installAvailable && deferredPrompt ? (
-            <button
-              onClick={handleInstall}
-              className="w-full px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all"
-            >
-              <Download className="w-4 h-4" />
-              {text.install}
-            </button>
-          ) : (
-            <p
-              className={`text-[10px] ${
-                isDark ? 'text-slate-500' : 'text-slate-400'
-              }`}
-            >
-              {text.unavailableInstall}
-            </p>
-          )}
-        </div>
-
-        {/* ABOUT & LEGAL */}
-        <div
-          className={`p-4 rounded-3xl border space-y-2 ${
-            isDark
-              ? 'bg-slate-900 border-slate-800/80'
-              : 'bg-white border-slate-200 shadow-sm'
-          }`}
-        >
-          <h3
-            className={`text-xs font-bold uppercase tracking-wider mb-2 ${
-              isDark ? 'text-slate-400' : 'text-slate-500'
-            }`}
-          >
-            {text.aboutLegal}
-          </h3>
-
-          {/* FEEDBACK */}
-          <button
-            onClick={() => setShowFeedbackModal(true)}
-            className={`w-full p-2.5 rounded-2xl border flex items-center justify-between text-xs font-semibold transition-all ${
-              isDark
-                ? 'bg-slate-950 border-slate-800 text-slate-200 hover:bg-slate-800'
-                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-teal-400" />
-              {text.sendFeedback}
-            </span>
-
-            <ChevronRight
-              className={`w-4 h-4 ${
-                isDark ? 'text-slate-500' : 'text-slate-400'
-              }`}
-            />
-          </button>
-
-          {/* PRIVACY */}
-          <div
-            className={`p-2.5 rounded-2xl border space-y-1 ${
-              isDark
-                ? 'bg-slate-950 border-slate-800'
-                : 'bg-slate-50 border-slate-200'
-            }`}
-          >
-            <div
-              className={`flex items-center gap-2 text-xs font-bold ${
-                isDark ? 'text-slate-200' : 'text-slate-800'
-              }`}
-            >
-              <Shield className="w-4 h-4 text-emerald-400" />
-              {text.privacy}
+              <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-1">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
+                  <Info className="w-4 h-4 text-amber-500 dark:text-amber-400" /> {t.aboutNutriScan}
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  {t.aboutDesc}
+                </p>
+              </div>
             </div>
-
-            <p
-              className={`text-[11px] leading-relaxed ${
-                isDark ? 'text-slate-400' : 'text-slate-500'
-              }`}
-            >
-              {text.privacyText}
-            </p>
-          </div>
-
-          {/* ABOUT */}
-          <div
-            className={`p-2.5 rounded-2xl border space-y-1 ${
-              isDark
-                ? 'bg-slate-950 border-slate-800'
-                : 'bg-slate-50 border-slate-200'
-            }`}
-          >
-            <div
-              className={`flex items-center gap-2 text-xs font-bold ${
-                isDark ? 'text-slate-200' : 'text-slate-800'
-              }`}
-            >
-              <Info className="w-4 h-4 text-amber-400" />
-              {text.about}
-            </div>
-
-            <p
-              className={`text-[11px] leading-relaxed ${
-                isDark ? 'text-slate-400' : 'text-slate-500'
-              }`}
-            >
-              {text.aboutText}
-            </p>
-          </div>
-        </div>
-
-        {/* CREATOR */}
-        <div
-          className={`p-4 rounded-3xl border space-y-3 ${
-            isDark
-              ? 'bg-slate-900 border-slate-800/80'
-              : 'bg-white border-slate-200 shadow-sm'
-          }`}
-        >
-          <h3
-            className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
-              isDark ? 'text-slate-400' : 'text-slate-500'
-            }`}
-          >
-            <User className="w-4 h-4 text-emerald-400" />
-            {text.creator}
-          </h3>
-
-          <div
-            className={`p-3 rounded-2xl border ${
-              isDark
-                ? 'bg-slate-950 border-slate-800'
-                : 'bg-slate-50 border-slate-200'
-            }`}
-          >
-            <p
-              className={`text-xs font-bold ${
-                isDark ? 'text-white' : 'text-slate-900'
-              }`}
-            >
-              {text.createdBy}: Umar Suhail
-            </p>
-
-            <p
-              className={`text-[11px] mt-1 ${
-                isDark ? 'text-slate-400' : 'text-slate-500'
-              }`}
-            >
-              {text.project}
-            </p>
-
-            <p
-              className={`text-[11px] mt-2 leading-relaxed ${
-                isDark ? 'text-slate-400' : 'text-slate-500'
-              }`}
-            >
-              {text.creatorInfo}
-            </p>
           </div>
         </div>
       </div>
 
-      {/* FEEDBACK MODAL */}
-      {showFeedbackModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
-          <div
-            className={`w-full max-w-sm border rounded-3xl p-5 space-y-4 shadow-2xl ${
-              isDark
-                ? 'bg-slate-900 border-slate-800 text-white'
-                : 'bg-white border-slate-200 text-slate-900'
-            }`}
-          >
-            <h3 className="text-base font-bold flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 text-emerald-400" />
-              {text.feedbackTitle}
-            </h3>
+      {/* Add to Home Screen Guide Modal */}
+      {showInstallGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 dark:bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 text-slate-900 dark:text-white space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold font-['Outfit'] flex items-center gap-2">
+                <Smartphone className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                {t.installGuideTitle}
+              </h3>
+              <button
+                onClick={() => setShowInstallGuide(false)}
+                className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
+            <div className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+              <div className={`p-3 rounded-2xl border ${isIOS ? 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800' : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-500/40'}`}>
+                {t.installGuideAndroid}
+              </div>
+              <div className={`p-3 rounded-2xl border ${isIOS ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-500/40' : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'}`}>
+                {t.installGuideIOS}
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                {t.installGuideDesktop}
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowInstallGuide(false)}
+              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl"
+            >
+              {t.gotIt}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Modal */}
+      {showFeedbackModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 dark:bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 text-slate-900 dark:text-white space-y-4 shadow-2xl">
+            <h3 className="text-base font-bold flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> {t.sendAppFeedback}
+            </h3>
             {feedbackSent ? (
-              <div className="p-4 bg-emerald-950/40 border border-emerald-500/40 rounded-2xl text-xs text-emerald-300 text-center font-bold">
-                {text.thankYou}
+              <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-500/40 rounded-2xl text-xs text-emerald-700 dark:text-emerald-300 text-center font-bold">
+                {t.feedbackThanks}
               </div>
             ) : (
-              <form
-                onSubmit={handleSendFeedback}
-                className="space-y-3"
-              >
+              <form onSubmit={handleSendFeedback} className="space-y-3">
                 <textarea
                   required
                   rows={4}
-                  placeholder={text.feedbackPlaceholder}
+                  placeholder={t.feedbackPlaceholder}
                   value={feedbackText}
                   onChange={(e) => setFeedbackText(e.target.value)}
-                  className={`w-full p-3 border rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                    isDark
-                      ? 'bg-slate-950 border-slate-800 text-white'
-                      : 'bg-slate-50 border-slate-200 text-slate-900'
-                  }`}
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
-
+                {feedbackError && (
+                  <p className="text-xs text-rose-600 dark:text-rose-400">{feedbackError}</p>
+                )}
                 <div className="flex justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => setShowFeedbackModal(false)}
-                    className={`px-3 py-1.5 text-xs rounded-xl ${
-                      isDark
-                        ? 'bg-slate-800 text-slate-300'
-                        : 'bg-slate-200 text-slate-700'
-                    }`}
+                    className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs rounded-xl"
                   >
-                    {text.cancel}
+                    {t.cancel}
                   </button>
-
                   <button
                     type="submit"
-                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center gap-1"
+                    disabled={submittingFeedback}
+                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl flex items-center gap-1"
                   >
-                    <Send className="w-3.5 h-3.5" />
-                    {text.submit}
+                    {submittingFeedback ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                    {t.submit}
                   </button>
                 </div>
               </form>

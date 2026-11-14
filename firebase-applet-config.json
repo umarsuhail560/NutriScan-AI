@@ -1,12 +1,12 @@
 {
-  "projectId": "nutriscan-ai-fbf9c",
-  "appId": "1:1005796912952:web:24899b748b6f1389581bcd",
-  "apiKey": "AIzaSyB03yFq15DZgFTIipevI5T5Qh6x_JOQkWo",
-  "authDomain": "nutriscan-ai-fbf9c.firebaseapp.com",
-  "firestoreDatabaseId": "",
-  "storageBucket": "nutriscan-ai-fbf9c.firebasestorage.app",
-  "messagingSenderId": "1005796912952",
+  "projectId": "proverbial-mode-06shk",
+  "appId": "1:151486498554:web:8f9b00cf74487aa19aab43",
+  "apiKey": "AIzaSyBzTeJl_y32RCw4LnT86TptoAhgq3nvVRI",
+  "authDomain": "proverbial-mode-06shk.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-nutriscanai-0e62bc95-f59b-4c98-ac86-0500fe7e60a4",
+  "storageBucket": "proverbial-mode-06shk.firebasestorage.app",
+  "messagingSenderId": "151486498554",
   "measurementId": "",
-  "oAuthClientId": "",
+  "oAuthClientId": "151486498554-hnbdael909oarsdugft6qhbkdag7h4cv.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

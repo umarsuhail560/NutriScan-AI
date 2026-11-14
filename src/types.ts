@@ -1,13 +1,6 @@
 export type GradeType = 'A+' | 'A' | 'B' | 'C' | 'D' | 'E';
-
-export type RiskLevelType =
-  | 'Very Healthy'
-  | 'Healthy'
-  | 'Moderate'
-  | 'Unhealthy'
-  | 'Avoid Frequently';
-
-export type ScanMode = 'photo' | 'upload';
+export type RiskLevelType = 'Very Healthy' | 'Healthy' | 'Moderate' | 'Unhealthy' | 'Avoid Frequently';
+export type ScanMode = 'photo' | 'upload' | 'barcode';
 
 export interface PopulationSuitability {
   forChildren: boolean;
@@ -83,4 +76,30 @@ export interface UserProfile {
   dietaryPreferences?: string[];
   achievements?: Achievement[];
   createdAt: string;
+}
+
+export interface FeedbackItem {
+  id: string;
+  senderUid: string;
+  senderName: string;
+  senderEmail: string;
+  senderType: 'google' | 'email' | 'guest';
+  message: string;
+  status: 'pending' | 'replied';
+  adminReply: string | null;
+  repliedAt: string | null;
+  createdAt: string;
+}
+
+export interface RegisteredAccountSummary {
+  uid: string;
+  displayName: string;
+  email: string;
+  photoURL: string | null;
+  provider: 'google' | 'email';
+  totalScans: number;
+  healthyScansCount: number;
+  unhealthyScansCount: number;
+  createdAt: string;
+  lastActiveAt: string;
 }

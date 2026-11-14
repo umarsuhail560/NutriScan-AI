@@ -2,6 +2,23 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Global Catch-all Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
     function isSignedIn() {
       return request.auth != null;
     }
@@ -10,25 +27,90 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Global Catch-all Deny
-    match /{document=**} {
-      allow read, write: if false;
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.email == 'umarsuhail560@gmail.com'
+        && request.auth.token.email_verified == true;
     }
 
-    // User profiles collection
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid'])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'email', 'photoURL',
+          'totalScans', 'healthyScansCount', 'unhealthyScansCount',
+          'dietaryPreferences', 'achievements', 'createdAt'
+        ])
+        && data.uid is string && data.uid.size() <= 128
+        && (!('displayName' in data) || data.displayName == null || (data.displayName is string && data.displayName.size() <= 120))
+        && (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 200))
+        && (!('photoURL' in data) || data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 1000))
+        && (!('totalScans' in data) || data.totalScans is number)
+        && (!('healthyScansCount' in data) || data.healthyScansCount is number)
+        && (!('unhealthyScansCount' in data) || data.unhealthyScansCount is number)
+        && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64));
+    }
+
+    function isValidScan(data) {
+      return data.keys().hasAll(['userId', 'productName', 'healthScore'])
+        && data.userId is string && data.userId.size() <= 128 && data.userId == request.auth.uid
+        && data.productName is string && data.productName.size() <= 300
+        && data.healthScore is number && data.healthScore >= 0 && data.healthScore <= 100
+        && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64));
+    }
+
+    function isValidFeedbackCreate(data) {
+      return data.keys().hasAll(['id', 'senderUid', 'senderName', 'senderEmail', 'senderType', 'message', 'status', 'createdAt'])
+        && data.keys().hasOnly(['id', 'senderUid', 'senderName', 'senderEmail', 'senderType', 'message', 'status', 'adminReply', 'repliedAt', 'createdAt'])
+        && isValidId(data.id)
+        && data.senderUid is string && data.senderUid == request.auth.uid
+        && data.senderName is string && data.senderName.size() <= 120
+        && data.senderEmail is string && data.senderEmail.size() <= 200
+        && data.senderType in ['google', 'email', 'guest']
+        && data.message is string && data.message.size() >= 1 && data.message.size() <= 2000
+        && data.status == 'pending'
+        && (!('adminReply' in data) || data.adminReply == null)
+        && (!('repliedAt' in data) || data.repliedAt == null)
+        && data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    function isValidFeedbackReply(data, prev) {
+      return data.keys().hasAll(['id', 'senderUid', 'senderName', 'senderEmail', 'senderType', 'message', 'status', 'createdAt'])
+        && data.keys().hasOnly(['id', 'senderUid', 'senderName', 'senderEmail', 'senderType', 'message', 'status', 'adminReply', 'repliedAt', 'createdAt'])
+        && data.id == prev.id
+        && data.senderUid == prev.senderUid
+        && data.message == prev.message
+        && data.createdAt == prev.createdAt
+        && data.status == 'replied'
+        && data.adminReply is string && data.adminReply.size() >= 1 && data.adminReply.size() <= 2000
+        && data.repliedAt is string && data.repliedAt.size() <= 64
+        && incoming().diff(existing()).affectedKeys().hasOnly(['adminReply', 'repliedAt', 'status']);
+    }
+
+    // User profiles collection (PII isolated to Owner or Admin)
     match /users/{userId} {
-      allow get, list: if isOwner(userId);
-      allow create, update: if isOwner(userId) && request.resource.data.uid == userId;
-      allow delete: if isOwner(userId);
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isOwner(userId) || isAdmin();
+      allow create: if isValidId(userId) && isOwner(userId) && isValidUser(incoming()) && incoming().uid == userId;
+      allow update: if isValidId(userId) && isOwner(userId) && isValidUser(incoming()) && incoming().uid == existing().uid;
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
     }
 
     // Scans collection
     match /scans/{scanId} {
-      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isValidId(scanId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isValidId(scanId) && isSignedIn() && isValidScan(incoming());
+      allow update: if isValidId(scanId) && isSignedIn() && existing().userId == request.auth.uid && isValidScan(incoming()) && incoming().userId == existing().userId;
+      allow delete: if isValidId(scanId) && isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Feedback collection (Sender sees only their own + replies; Admin sees all and replies)
+    match /feedback/{feedbackId} {
+      allow get: if isValidId(feedbackId) && isSignedIn() && (existing().senderUid == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().senderUid == request.auth.uid || isAdmin());
+      allow create: if isValidId(feedbackId) && isSignedIn() && isValidFeedbackCreate(incoming());
+      allow update: if isValidId(feedbackId) && isAdmin() && isValidFeedbackReply(incoming(), existing());
+      allow delete: if isValidId(feedbackId) && isAdmin();
     }
   }
 }
-

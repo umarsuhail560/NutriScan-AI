@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html, body {
+    overflow-x: hidden;
+  }
+}
+
 @layer utilities {
   .scrollbar-none::-webkit-scrollbar {
     display: none;
@@ -18,4 +26,3 @@
 .animate-bounce-short {
   animation: bounceShort 2s ease-in-out infinite;
 }
-
