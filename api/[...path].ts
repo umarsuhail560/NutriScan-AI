@@ -1,4 +1,4 @@
-import { app } from '../server';
+import { app } from '../server.ts';
 
 // Vercel routes /api/* requests to this catch-all function. Preserve the
 // /api prefix so the existing Express route definitions continue to match.
