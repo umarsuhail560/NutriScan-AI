@@ -1401,4 +1401,10 @@ async function startServer() {
   });
 }
 
-startServer();
+export { app };
+
+// Vercel serves API requests through api/[...path].ts. Keep the listener for
+// local development and standalone Node hosting, where this file owns the port.
+if (process.env.VERCEL !== '1') {
+  startServer();
+}

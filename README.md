@@ -62,7 +62,13 @@ npm run build
 npm start
 ```
 
-The build creates the Vite frontend in `dist/` and bundles the Express server as `dist/server.cjs`. The production host must run the Node server and provide `GEMINI_API_KEY` (and any desired `ADMIN_PASSCODE`) as server-side environment variables. This project is a Node/Express application; configure the host to run `npm run build` and `npm start`.
+The build creates the Vite frontend in `dist/` and bundles the Express server as `dist/server.cjs`. For a standalone Node host, run `npm start` and provide `GEMINI_API_KEY` (and any desired `ADMIN_PASSCODE`) as server-side environment variables.
+
+### Vercel
+
+The Vercel project serves the Vite frontend from `dist/` and routes `/api/*` requests through the catch-all function in `api/[...path].ts` to the Express API. `vercel.json` keeps client-side routes such as `/scan` working on direct navigation. Pushes to `main` deploy to the existing production project.
+
+In Vercel Project Settings, configure `GEMINI_API_KEY` as a server-side environment variable for Production and Preview. The Firebase web configuration is read from `firebase-applet-config.json`; add the production Vercel domain to Firebase Authentication's Authorized domains and deploy `firestore.rules` to the configured Firebase project.
 
 ## Environment variables
 
